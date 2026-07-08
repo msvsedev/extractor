@@ -672,6 +672,26 @@ const REDEEM_SHEET_URL = REDEEM_SHEET_ID
   ? `https://docs.google.com/spreadsheets/d/${REDEEM_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Redeem%20Codes`
   : '';
 
+// Google Apps Script Web App URL — the only thing with permission to WRITE to the sheets
+// (mark a redeemed user's plan, clear a used redeem code, clear an extracted key).
+// Everything else in this file only ever reads via public CSV. Fill in after deploying
+// MSVSE_WriteBackend.gs.txt (Deploy -> New deployment -> Web app -> copy the /exec URL).
+const WRITE_BACKEND_URL = 'https://script.google.com/macros/s/AKfycbwvGtmSjvQW_8qDv00Lc3yPGfU2LedZQU8hZB-8zKKiJK-Uo8xYFnPZ_zhtB8puK1l2dQ/exec';
+
+async function callBackend(payload){
+  if(!WRITE_BACKEND_URL) return { success: false, error: 'Write backend not configured' };
+  try{
+    const res = await fetch(WRITE_BACKEND_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // avoids a CORS preflight against Apps Script
+      body: JSON.stringify(payload)
+    });
+    return await res.json();
+  } catch(err){
+    return { success: false, error: String(err) };
+  }
+}
+
 // Daily extraction allotments per plan. "bindMak" covers Bind (setup.office.com key) + Volume MAK
 // key types; "retail" covers Retail. Redeeming a code tops up today's balance by these amounts.
 const PLANS = {
@@ -848,7 +868,6 @@ logoutLink.addEventListener('click', async () => {
 // ---------- Daily balance + redeem codes ----------
 function todayStr(){ return new Date().toISOString().slice(0,10); }
 function balanceKeyFor(user){ return `balance:${user.email}:${todayStr()}`; }
-function redeemedKeyFor(user){ return `redeemed:${user.email}`; }
 
 async function getBalance(user){
   const key = balanceKeyFor(user);
@@ -909,35 +928,6 @@ redeemOpenBtn.addEventListener('click', () => {
   if(redeemBox.classList.contains('open')) redeemInput.focus();
 });
 
-let redeemCodesCache = null;
-async function loadRedeemCodes(){
-  if(!REDEEM_SHEET_URL) return {};
-  if(redeemCodesCache) return redeemCodesCache;
-  try{
-    const res = await fetch(REDEEM_SHEET_URL);
-    if(!res.ok) throw new Error('HTTP ' + res.status);
-    const text = await res.text();
-    const rows = parseCSVGeneric(text);
-    if(!rows.length) return {};
-    const header = rows[0];
-    const map = {};
-    header.forEach((planName, c) => {
-      const name = (planName || '').trim();
-      if(!name) return;
-      const codes = [];
-      for(let r = 1; r < rows.length; r++){
-        const v = (rows[r][c] || '').trim();
-        if(v) codes.push(v.toUpperCase());
-      }
-      map[name] = codes;
-    });
-    redeemCodesCache = map;
-    return map;
-  } catch(e){
-    return {};
-  }
-}
-
 async function handleRedeem(){
   const code = redeemInput.value.trim().toUpperCase();
   if(!code){
@@ -950,40 +940,30 @@ async function handleRedeem(){
   redeemStatus.textContent = 'Checking…';
   redeemStatus.className = 'sync-status busy';
 
-  const redeemed = (await rememberStore.get(redeemedKeyFor(currentUser))) || [];
-  if(redeemed.includes(code)){
-    redeemStatus.textContent = 'Code already used on this device';
-    redeemStatus.className = 'sync-status err';
-    redeemSubmitBtn.disabled = false;
-    return;
-  }
-
-  const codeMap = await loadRedeemCodes();
-  let matchedPlan = null;
-  for(const planName of Object.keys(codeMap)){
-    if(codeMap[planName].includes(code)){ matchedPlan = planName; break; }
-  }
+  const result = await callBackend({ action: 'redeemCode', code, email: currentUser.email });
 
   redeemSubmitBtn.disabled = false;
 
-  if(!matchedPlan){
-    redeemStatus.textContent = REDEEM_SHEET_URL ? 'Invalid code' : 'Redeem database not connected';
+  if(!result.success){
+    redeemStatus.textContent = result.error === 'Write backend not configured'
+      ? 'Redeem backend not connected yet'
+      : (result.error || 'Invalid code');
     redeemStatus.className = 'sync-status err';
     return;
   }
 
+  const matchedPlan = result.plan;
   const plan = planFor(matchedPlan);
   const bal = await getBalance(currentUser);
   bal.bindMak += plan.bindMak;
   bal.retail += plan.retail;
   await setBalance(currentUser, bal);
+
+  currentUser.plan = matchedPlan; // reflect the permanent plan upgrade for the rest of this session
   renderBalance(bal, currentUser);
 
-  redeemed.push(code);
-  await rememberStore.set(redeemedKeyFor(currentUser), redeemed);
-
   redeemInput.value = '';
-  redeemStatus.textContent = `+${plan.bindMak} Bind/MAK, +${plan.retail} Retail added (${matchedPlan})`;
+  redeemStatus.textContent = `+${plan.bindMak} Bind/MAK, +${plan.retail} Retail added — upgraded to ${matchedPlan}`;
   redeemStatus.className = 'sync-status ok';
 }
 
@@ -1474,6 +1454,17 @@ async function runExtraction(){
 
   if(willGive.length > 0){
     await deductBalance(currentUser, bucket, willGive.length);
+
+    // Remove immediately from the local pool so the same key can't be handed out again
+    // this session even before the next auto-sync reconciles with the sheet.
+    const extractedKeys = new Set(willGive.map(r => r.key));
+    pool = pool.filter(r => !(r.category === category && r.product === product && r.type === type && extractedKeys.has(r.key)));
+
+    // Clear each extracted key from the actual Google Sheet via the write backend.
+    const header = `${product} | ${type}`;
+    Promise.allSettled(
+      willGive.map(r => callBackend({ action: 'deleteKey', category, header, key: r.key }))
+    );
   }
 
   lastExtracted = willGive;
