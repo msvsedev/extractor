@@ -779,7 +779,7 @@ let currentUser = null;
 // Bump this whenever you deploy a new version of this file. Any "remembered" login
 // tied to an older build ID is treated as stale and forces a fresh login — this is
 // what makes remember-me survive normal reloads but NOT survive you updating the app.
-const APP_BUILD_ID = '2026-07-08.1';
+const APP_BUILD_ID = '2026-07-08.2';
 
 // Fallback so the demo still works before the Users tab / sharing is set up.
 let users = [
@@ -981,8 +981,8 @@ async function handleChangePassword(){
     cpStatus.className = 'login-status';
     return;
   }
-  if(next.length < 4){
-    cpStatus.textContent = 'New password is too short';
+  if(next.length < 6){
+    cpStatus.textContent = 'New password must be at least 6 characters';
     cpStatus.className = 'login-status';
     return;
   }
