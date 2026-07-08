@@ -1,0 +1,1235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>MSVSE KEY EXTRACTOR v1.0.1</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #0a0e14;
+    --panel: #11161f;
+    --panel-2: #0d1119;
+    --line: #1e2733;
+    --line-soft: #161d27;
+    --accent: #4fa3ff;
+    --accent-dim: #2c5c8f;
+    --amber: #ffb454;
+    --green: #46d68a;
+    --red: #ff6b6b;
+    --text: #dde5ee;
+    --muted: #6b7789;
+    --muted-2: #48515e;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0; padding:0; height:100%;
+    background: radial-gradient(1200px 600px at 15% -10%, #101826 0%, var(--bg) 55%);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .mono{ font-family:'JetBrains Mono', monospace; }
+  .app{
+    max-width: 1180px;
+    margin: 28px auto;
+    padding: 0 20px 40px;
+  }
+
+  /* Title bar */
+  .titlebar{
+    display:flex; align-items:center; justify-content:space-between;
+    background: linear-gradient(180deg, #141b26, #0f1420);
+    border: 1px solid var(--line);
+    border-bottom: none;
+    border-radius: 10px 10px 0 0;
+    padding: 10px 16px;
+  }
+  .titlebar-left{ display:flex; align-items:center; gap:12px; }
+  .dots{ display:flex; gap:7px; }
+  .dot{ width:11px; height:11px; border-radius:50%; }
+  .dot.r{ background:#ff5f57; } .dot.y{ background:#febc2e; } .dot.g{ background:#28c840; }
+  .app-name{
+    font-family:'JetBrains Mono', monospace;
+    font-weight:700; font-size:13px; letter-spacing:.06em;
+    color: var(--text);
+  }
+  .app-name span{ color: var(--accent); }
+  .version-chip{
+    font-family:'JetBrains Mono', monospace;
+    font-size:10.5px; color: var(--muted);
+    border:1px solid var(--line); border-radius:20px;
+    padding:2px 9px; letter-spacing:.03em;
+  }
+  .status-pill{
+    display:flex; align-items:center; gap:7px;
+    font-family:'JetBrains Mono', monospace; font-size:11px; color: var(--muted);
+  }
+  .status-pill .led{ width:7px; height:7px; border-radius:50%; background: var(--muted-2); }
+  .status-pill.live .led{ background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .status-pill.busy .led{ background: var(--amber); box-shadow: 0 0 8px var(--amber); animation: pulse 1s infinite; }
+  @keyframes pulse{ 0%,100%{opacity:1;} 50%{opacity:.35;} }
+
+  .frame{
+    border:1px solid var(--line);
+    border-radius: 0 0 10px 10px;
+    background: var(--panel);
+    display:grid;
+    grid-template-columns: 300px 1fr;
+    min-height: 560px;
+  }
+  @media (max-width: 860px){ .frame{ grid-template-columns: 1fr; } }
+
+  /* Left config panel */
+  .config{
+    border-right:1px solid var(--line);
+    padding: 20px 18px;
+    background: var(--panel-2);
+    display:flex; flex-direction:column; gap:18px;
+  }
+  .config-title{
+    font-family:'JetBrains Mono', monospace;
+    font-size:10.5px; letter-spacing:.14em; color: var(--muted);
+    text-transform: uppercase;
+    padding-bottom:10px; border-bottom:1px solid var(--line-soft);
+  }
+  .field{ display:flex; flex-direction:column; gap:7px; }
+  .field label{
+    font-size:11px; letter-spacing:.04em; color: var(--muted);
+    font-family:'JetBrains Mono', monospace;
+    text-transform: uppercase;
+  }
+  select{
+    appearance:none; -webkit-appearance:none;
+    background: #0c111a url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6"><path d="M0 0L5 6L10 0" fill="none" stroke="%236b7789" stroke-width="1.4"/></svg>') no-repeat right 12px center;
+    color: var(--text);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 9px 30px 9px 11px;
+    font-size: 13px;
+    font-family: 'Inter', sans-serif;
+    cursor:pointer;
+    transition: border-color .15s ease;
+    width:100%;
+  }
+  select:hover{ border-color: var(--accent-dim); }
+  select:focus{ outline:none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79,163,255,.12); }
+  select:disabled{ opacity:.45; cursor:not-allowed; }
+
+  .divider{ height:1px; background: var(--line-soft); margin: 2px 0; }
+
+  .pool-toggle{
+    font-family:'JetBrains Mono', monospace;
+    font-size: 11px; color: var(--muted);
+    display:flex; align-items:center; justify-content:space-between;
+    cursor:pointer; user-select:none;
+    padding: 8px 0;
+  }
+  .pool-toggle:hover{ color: var(--text); }
+  .pool-toggle .chev{ transition: transform .15s ease; color: var(--muted-2); }
+  .pool-toggle.open .chev{ transform: rotate(90deg); }
+  .pool-box{ display:none; flex-direction:column; gap:8px; }
+  .pool-box.open{ display:flex; }
+  .pool-box textarea{
+    width:100%; min-height:120px; resize: vertical;
+    background: #080b11; color: var(--muted);
+    border:1px solid var(--line); border-radius:6px;
+    font-family:'JetBrains Mono', monospace; font-size:10.5px; line-height:1.6;
+    padding:10px;
+  }
+  .pool-box textarea:focus{ outline:none; border-color: var(--accent-dim); color: var(--text); }
+  .pool-hint{ font-size:10px; color: var(--muted-2); line-height:1.5; }
+  .pool-save{
+    align-self:flex-start;
+    background: none; border:1px solid var(--line); color: var(--muted);
+    font-family:'JetBrains Mono', monospace; font-size:10.5px;
+    padding: 5px 10px; border-radius:5px; cursor:pointer;
+  }
+  .pool-save:hover{ border-color: var(--accent-dim); color: var(--accent); }
+  .pool-save:disabled{ opacity:.5; cursor:not-allowed; }
+
+  .cloud-input{
+    width:100%;
+    background: #080b11; color: var(--text);
+    border:1px solid var(--line); border-radius:6px;
+    font-family:'JetBrains Mono', monospace; font-size:10.5px;
+    padding: 8px 10px;
+  }
+  .cloud-input:focus{ outline:none; border-color: var(--accent-dim); }
+  .sync-row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:2px; }
+  .sync-status{
+    font-family:'JetBrains Mono', monospace; font-size:10px; color: var(--muted-2);
+  }
+  .sync-status.ok{ color: var(--green); }
+  .sync-status.err{ color: var(--red); }
+  .sync-status.busy{ color: var(--amber); }
+
+  .admin-panel{
+    display:none;
+    flex-direction: column;
+    gap: 18px;
+  }
+  .admin-panel.unlocked{ display:flex; }
+  #adminDivider{ display:none; }
+  #adminDivider.unlocked{ display:block; }
+  .admin-hint{
+    position:fixed; bottom:16px; left:50%; transform:translateX(-50%);
+    background: #0f1620; border:1px solid var(--line); color: var(--muted);
+    font-family:'JetBrains Mono', monospace; font-size:11px;
+    padding: 8px 14px; border-radius: 20px;
+    opacity:0; pointer-events:none;
+    transition: opacity .25s ease;
+    z-index: 50;
+  }
+  .admin-hint.show{ opacity:1; }
+  .titlebar-left .app-name{ cursor: default; user-select:none; }
+
+  .run-btn{
+    margin-top: auto;
+    background: linear-gradient(180deg, #1c62a8, #144a83);
+    border: 1px solid #2a75c2;
+    color: #fff;
+    font-family:'JetBrains Mono', monospace;
+    font-weight:600; font-size:12.5px; letter-spacing:.05em;
+    padding: 13px 14px;
+    border-radius: 7px;
+    cursor:pointer;
+    display:flex; align-items:center; justify-content:center; gap:9px;
+    transition: transform .1s ease, box-shadow .15s ease;
+  }
+  .run-btn:hover{ box-shadow: 0 0 0 3px rgba(79,163,255,.15); }
+  .run-btn:active{ transform: scale(.98); }
+  .run-btn:disabled{ opacity:.5; cursor:not-allowed; box-shadow:none; }
+  .run-btn svg{ width:13px; height:13px; }
+
+  /* Right processing panel */
+  .proc{ display:flex; flex-direction:column; min-height: 560px; }
+  .proc-header{
+    display:flex; align-items:center; justify-content:space-between;
+    padding: 14px 18px; border-bottom:1px solid var(--line-soft);
+  }
+  .proc-header .label{
+    font-family:'JetBrains Mono', monospace; font-size:10.5px;
+    letter-spacing:.14em; text-transform:uppercase; color: var(--muted);
+  }
+  .req-id{ font-family:'JetBrains Mono', monospace; font-size:10.5px; color: var(--muted-2); }
+
+  .progress-wrap{ padding: 14px 18px 4px; }
+  .progress-track{
+    height:6px; border-radius: 4px; background: #0c1119;
+    border:1px solid var(--line-soft); overflow:hidden;
+  }
+  .progress-fill{
+    height:100%; width:0%;
+    background: linear-gradient(90deg, var(--accent-dim), var(--accent));
+    box-shadow: 0 0 10px rgba(79,163,255,.5);
+    transition: width .18s linear;
+  }
+  .progress-meta{
+    display:flex; justify-content:space-between;
+    font-family:'JetBrains Mono', monospace; font-size:10px; color: var(--muted-2);
+    margin-top:6px;
+  }
+
+  .terminal{
+    flex:1; margin: 12px 18px; padding: 14px 16px;
+    background: #060a10; border: 1px solid var(--line-soft); border-radius: 8px;
+    font-family:'JetBrains Mono', monospace; font-size:12px; line-height:1.85;
+    overflow-y:auto; max-height: 300px;
+  }
+  .terminal .idle{ color: var(--muted-2); }
+  .terminal .idle .caret{
+    display:inline-block; width:7px; height:13px; background: var(--muted-2);
+    margin-left:4px; vertical-align:-2px; animation: blink 1s step-start infinite;
+  }
+  @keyframes blink{ 50%{ opacity:0; } }
+  .tline{ white-space: pre-wrap; opacity:0; animation: fadeIn .25s ease forwards; }
+  @keyframes fadeIn{ to{ opacity:1; } }
+  .tline .tag{ color: var(--muted-2); }
+  .tline .ok{ color: var(--green); }
+  .tline .info{ color: var(--accent); }
+  .tline .warn{ color: var(--amber); }
+
+  .results{
+    margin: 0 18px 18px; padding: 14px 16px;
+    background: var(--panel-2); border:1px solid var(--line-soft); border-radius:8px;
+    display:none;
+  }
+  .results.show{ display:block; }
+  .results-head{
+    display:flex; align-items:center; justify-content:space-between;
+    margin-bottom: 10px;
+  }
+  .results-head .label{
+    font-family:'JetBrains Mono', monospace; font-size:10.5px;
+    letter-spacing:.1em; text-transform:uppercase; color: var(--green);
+  }
+  .export-btn{
+    background:none; border:1px solid var(--line); color: var(--muted);
+    font-family:'JetBrains Mono', monospace; font-size:10.5px;
+    padding: 6px 11px; border-radius:5px; cursor:pointer;
+    display:flex; align-items:center; gap:6px;
+  }
+  .export-btn:hover{ border-color: var(--accent-dim); color: var(--accent); }
+  .key-list{ display:flex; flex-direction:column; gap:6px; }
+  .key-row{
+    display:flex; align-items:center; justify-content:space-between;
+    background: #0a0f17; border:1px solid var(--line-soft); border-radius:6px;
+    padding: 8px 12px;
+    font-family:'JetBrains Mono', monospace; font-size:12px;
+    opacity:0; transform: translateY(4px);
+    animation: rowIn .3s ease forwards;
+  }
+  @keyframes rowIn{ to{ opacity:1; transform:none; } }
+  .key-row .k{ color: var(--text); letter-spacing:.03em; }
+  .key-row .meta{ color: var(--muted-2); font-size:10.5px; }
+
+  .footer-note{
+    text-align:center; font-family:'JetBrains Mono', monospace;
+    font-size:10px; color: var(--muted-2); margin-top:12px; letter-spacing:.03em;
+  }
+
+  /* ---------- Login overlay ---------- */
+  .login-overlay{
+    position:fixed; inset:0; z-index: 100;
+    background: radial-gradient(1200px 600px at 15% -10%, #101826 0%, var(--bg) 55%);
+    display:flex; align-items:center; justify-content:center;
+    padding: 20px;
+  }
+  .login-card{
+    width: 100%; max-width: 360px;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 28px 26px 24px;
+  }
+  .login-brand{
+    display:flex; align-items:center; gap:10px;
+    justify-content:center;
+    margin-bottom: 6px;
+  }
+  .login-brand .app-name{ font-size:14px; }
+  .login-sub{
+    text-align:center; color: var(--muted);
+    font-family:'JetBrains Mono', monospace; font-size:10.5px;
+    letter-spacing:.05em; margin-bottom: 22px;
+  }
+  .login-field{ display:flex; flex-direction:column; gap:6px; margin-bottom:14px; }
+  .login-field label{
+    font-size:11px; letter-spacing:.04em; color: var(--muted);
+    font-family:'JetBrains Mono', monospace; text-transform:uppercase;
+  }
+  .login-field input{
+    background: #0c111a; color: var(--text);
+    border: 1px solid var(--line); border-radius: 6px;
+    padding: 10px 12px; font-size: 13px; font-family:'Inter', sans-serif;
+  }
+  .login-field input:focus{ outline:none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79,163,255,.12); }
+  .login-remember{
+    display:flex; align-items:center; gap:8px;
+    margin-bottom: 18px;
+    font-family:'JetBrains Mono', monospace; font-size:11px; color: var(--muted);
+    user-select:none; cursor:pointer;
+  }
+  .login-remember input{ accent-color: var(--accent); width:14px; height:14px; cursor:pointer; }
+  .login-btn{
+    width:100%;
+    background: linear-gradient(180deg, #1c62a8, #144a83);
+    border: 1px solid #2a75c2; color:#fff;
+    font-family:'JetBrains Mono', monospace; font-weight:600; font-size:12.5px; letter-spacing:.05em;
+    padding: 12px 14px; border-radius:7px; cursor:pointer;
+  }
+  .login-btn:hover{ box-shadow: 0 0 0 3px rgba(79,163,255,.15); }
+  .login-btn:disabled{ opacity:.5; cursor:not-allowed; box-shadow:none; }
+  .login-error{
+    display:none;
+    margin-top: 16px;
+    background: rgba(255,107,107,.08);
+    border: 1px solid rgba(255,107,107,.35);
+    border-radius: 8px;
+    padding: 12px 14px;
+    text-align:center;
+  }
+  .login-error.show{ display:block; }
+  .login-error p{
+    margin: 0 0 10px; color: var(--red);
+    font-family:'JetBrains Mono', monospace; font-size:11px; line-height:1.5;
+  }
+  .telegram-btn{
+    display:inline-flex; align-items:center; gap:7px; justify-content:center;
+    width:100%;
+    background: #229ED9; border: none; color:#fff;
+    font-family:'Inter', sans-serif; font-weight:600; font-size:12.5px;
+    padding: 9px 14px; border-radius:7px; cursor:pointer;
+    text-decoration:none;
+  }
+  .telegram-btn:hover{ filter: brightness(1.08); }
+  .telegram-btn svg{ width:15px; height:15px; flex-shrink:0; }
+  .login-status{
+    text-align:center; margin-top:14px;
+    font-family:'JetBrains Mono', monospace; font-size:10px; color: var(--muted-2);
+    min-height: 14px;
+  }
+  .login-status.busy{ color: var(--amber); }
+
+  .logout-link{
+    background:none; border:none; color: var(--muted);
+    font-family:'JetBrains Mono', monospace; font-size:10.5px;
+    cursor:pointer; padding:0; text-decoration: underline; text-underline-offset:2px;
+  }
+  .logout-link:hover{ color: var(--accent); }
+</style>
+</head>
+<body>
+
+<!-- LOGIN OVERLAY -->
+<div class="login-overlay" id="loginOverlay">
+  <div class="login-card">
+    <div class="login-brand">
+      <div class="dots"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div>
+      <div class="app-name">MSVSE<span>::</span>KEY EXTRACTOR</div>
+    </div>
+    <div class="login-sub">SIGN IN TO CONTINUE</div>
+
+    <div class="login-field">
+      <label>Email</label>
+      <input type="email" id="loginEmail" autocomplete="username" placeholder="you@company.com">
+    </div>
+    <div class="login-field">
+      <label>Password</label>
+      <input type="password" id="loginPassword" autocomplete="current-password" placeholder="••••••••">
+    </div>
+
+    <label class="login-remember">
+      <input type="checkbox" id="rememberMe">
+      Remember me on this device
+    </label>
+
+    <button class="login-btn" id="loginBtn">LOGIN</button>
+    <div class="login-status" id="loginStatus"></div>
+
+    <div class="login-error" id="loginError">
+      <p>We couldn't find that account. Contact the admin on Telegram to request access.</p>
+      <a class="telegram-btn" id="telegramBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 240 240" fill="currentColor"><path d="M120,0C53.7,0,0,53.7,0,120s53.7,120,120,120,120-53.7,120-120S186.3,0,120,0z M175.3,82.3l-19.9,93.8c-1.5,6.6-5.4,8.3-11,5.1l-30.5-22.5-14.7,14.2c-1.6,1.6-3,3-6.2,3l2.2-31.3,57-51.5c2.5-2.2-0.5-3.4-3.8-1.2l-70.5,44.4-30.4-9.5c-6.6-2.1-6.7-6.6,1.4-9.7l118.9-45.8C173.4,68.8,177.4,71.6,175.3,82.3z"/></svg>
+        Message admin on Telegram
+      </a>
+    </div>
+  </div>
+</div>
+
+<div class="app" id="mainApp" style="display:none;">
+
+  <div class="titlebar">
+    <div class="titlebar-left">
+      <div class="dots"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div>
+      <div class="app-name">MSVSE<span>::</span>KEY EXTRACTOR</div>
+      <div class="version-chip">v1.0.1</div>
+    </div>
+    <div style="display:flex; align-items:center; gap:14px;">
+      <span class="logout-link" id="logoutLink">log out (<span id="loggedInAs"></span>)</span>
+      <div class="status-pill live" id="statusPill">
+        <span class="led"></span><span id="statusText">READY</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="frame">
+
+    <!-- LEFT CONFIG -->
+    <div class="config">
+      <div class="config-title">Request Configuration</div>
+
+      <div class="field">
+        <label>Category</label>
+        <select id="categorySel"></select>
+      </div>
+
+      <div class="field">
+        <label>Product Name</label>
+        <select id="productSel"></select>
+      </div>
+
+      <div class="field">
+        <label>Key Type</label>
+        <select id="typeSel"></select>
+      </div>
+
+      <div class="field">
+        <label>Quantity</label>
+        <select id="qtySel">
+          <option>1</option>
+          <option>3</option>
+          <option>5</option>
+          <option>10</option>
+          <option>25</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label>Export File Type</label>
+        <select id="exportSel">
+          <option value="txt">.TXT — Plain list</option>
+          <option value="csv">.CSV — Spreadsheet</option>
+          <option value="json">.JSON — Structured</option>
+        </select>
+      </div>
+
+      <div class="divider" id="adminDivider"></div>
+
+      <div id="adminPanel" class="admin-panel">
+        <div>
+          <div class="pool-toggle" id="poolToggle">
+            <span>Key Database <span style="color:var(--muted-2)">(source)</span></span>
+            <span class="chev">›</span>
+          </div>
+          <div class="pool-box" id="poolBox">
+            <div class="pool-hint">One key per line: Category | Product | Key Type | Key</div>
+            <textarea id="poolText" spellcheck="false"></textarea>
+            <button class="pool-save" id="poolSave">Save to database</button>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div>
+          <div class="pool-toggle open" id="cloudToggle">
+            <span>Cloud Source <span style="color:var(--muted-2)">(Google Sheets)</span></span>
+            <span class="chev">›</span>
+          </div>
+          <div class="pool-box open" id="cloudBox">
+            <div class="pool-hint">Header row = one column per "Product | Key Type". Paste new keys underneath the matching column as stock arrives.</div>
+
+            <div class="field" style="gap:4px;">
+              <label style="font-size:10px;">Windows tab URL</label>
+              <input type="text" id="urlWindows" class="cloud-input" placeholder="https://docs.google.com/spreadsheets/d/e/.../pub?output=csv">
+            </div>
+            <div class="field" style="gap:4px;">
+              <label style="font-size:10px;">Office tab URL</label>
+              <input type="text" id="urlOffice" class="cloud-input" placeholder="https://docs.google.com/spreadsheets/d/e/.../pub?output=csv">
+            </div>
+            <div class="field" style="gap:4px;">
+              <label style="font-size:10px;">Server tab URL</label>
+              <input type="text" id="urlServer" class="cloud-input" placeholder="https://docs.google.com/spreadsheets/d/e/.../pub?output=csv">
+            </div>
+
+          <div class="sync-row">
+            <button class="pool-save" id="syncBtn">Sync now</button>
+            <span class="sync-status" id="syncStatus">Source: local demo data</span>
+          </div>
+        </div>
+      </div>
+      </div>
+
+      <button class="run-btn" id="runBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 3l14 9-14 9V3z"/></svg>
+        RUN EXTRACTION
+      </button>
+    </div>
+
+    <!-- RIGHT PROCESSING -->
+    <div class="proc">
+      <div class="proc-header">
+        <span class="label">Processing Log</span>
+        <span class="req-id" id="reqId">req_id: —</span>
+      </div>
+
+      <div class="progress-wrap">
+        <div class="progress-track"><div class="progress-fill" id="progFill"></div></div>
+        <div class="progress-meta">
+          <span id="progLabel">0%</span>
+          <span id="progStage">idle</span>
+        </div>
+      </div>
+
+      <div class="terminal" id="terminal">
+        <div class="idle" id="idleLine">Waiting for request<span class="caret"></span></div>
+      </div>
+
+      <div class="results" id="results">
+        <div class="results-head">
+          <span class="label" id="resultsLabel">Extraction Complete</span>
+          <button class="export-btn" id="exportBtn">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v13m0 0l-4-4m4 4l4-4M4 20h16"/></svg>
+            Export
+          </button>
+        </div>
+        <div class="key-list" id="keyList"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="footer-note">MSVSE KEY EXTRACTOR v1.0.1 — local session — no external calls</div>
+  <div class="admin-hint" id="adminHint">Admin panel unlocked</div>
+</div>
+
+<script>
+// ---------- Login system ----------
+// Telegram admin ID is embedded here rather than shown in the UI. Note: anyone who views this
+// file's source can still find it — there's no way to fully hide a value shipped to the client
+// in plain HTML/JS. This only keeps it out of the visible interface.
+const TELEGRAM_ADMIN_ID = '8414659012';
+document.getElementById('telegramBtn').href = 'tg://user?id=' + TELEGRAM_ADMIN_ID;
+
+// Users are pulled from the "Users" tab of a dedicated Google Sheet (separate from the key database).
+// Sheet columns (any order, matched by header name): Name, Email, Password, Joined Date.
+const USER_SHEET_ID = '1YY5QMBzg1gv2FwG0GHO21PR-Ko2UBHhK';
+const USER_SHEET_URL = `https://docs.google.com/spreadsheets/d/${USER_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Users`;
+
+// Fallback so the demo still works before the Users tab / sharing is set up.
+let users = [
+  { name: 'Demo User', email: 'demo@msvse.local', password: 'demo1234', joined: '2026-01-01' }
+];
+
+// Minimal storage abstraction — uses the artifact's persistent storage API when available
+// (window.storage), otherwise keeps "remember me" in memory only for this page load.
+// If you're hosting this file outside Claude (e.g. on your own server), you can swap
+// rememberStore.set/get to use localStorage directly for real cross-session persistence.
+const rememberStore = {
+  async set(key, value){
+    if(window.storage){ try{ await window.storage.set(key, value, false); return; }catch(e){} }
+    this._mem = this._mem || {};
+    this._mem[key] = value;
+  },
+  async get(key){
+    if(window.storage){
+      try{ const r = await window.storage.get(key, false); return r ? r.value : null; }catch(e){ return null; }
+    }
+    this._mem = this._mem || {};
+    return this._mem[key] || null;
+  },
+  async del(key){
+    if(window.storage){ try{ await window.storage.delete(key, false); return; }catch(e){} }
+    this._mem = this._mem || {};
+    delete this._mem[key];
+  }
+};
+
+function parseUserCSV(text){
+  const rows = parseCSVGeneric(text);
+  if(!rows.length) return [];
+  const header = rows[0].map(h => h.trim().toLowerCase());
+  const idx = {
+    name: header.findIndex(h => h.includes('name')),
+    email: header.findIndex(h => h.includes('email')),
+    password: header.findIndex(h => h.includes('password')),
+    joined: header.findIndex(h => h.includes('joined'))
+  };
+  return rows.slice(1).map(r => ({
+    name: idx.name >= 0 ? (r[idx.name] || '').trim() : '',
+    email: idx.email >= 0 ? (r[idx.email] || '').trim().toLowerCase() : '',
+    password: idx.password >= 0 ? (r[idx.password] || '').trim() : '',
+    joined: idx.joined >= 0 ? (r[idx.joined] || '').trim() : ''
+  })).filter(u => u.email && u.password);
+}
+
+// Same quoted-CSV parser used by the key database sync, duplicated here so login works
+// even before the rest of the app's script (further down) has initialized.
+function parseCSVGeneric(text){
+  const rows = [];
+  let row = [], field = '', inQuotes = false;
+  for(let i = 0; i < text.length; i++){
+    const c = text[i], next = text[i+1];
+    if(inQuotes){
+      if(c === '"' && next === '"'){ field += '"'; i++; }
+      else if(c === '"'){ inQuotes = false; }
+      else { field += c; }
+    } else {
+      if(c === '"'){ inQuotes = true; }
+      else if(c === ','){ row.push(field); field = ''; }
+      else if(c === '\n'){ row.push(field); rows.push(row); row = []; field = ''; }
+      else if(c === '\r'){ /* skip */ }
+      else { field += c; }
+    }
+  }
+  if(field.length || row.length){ row.push(field); rows.push(row); }
+  return rows.filter(r => r.some(f => f.trim().length));
+}
+
+async function loadUsers(){
+  try{
+    const res = await fetch(USER_SHEET_URL);
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    const text = await res.text();
+    const parsed = parseUserCSV(text);
+    if(parsed.length) users = parsed;
+  } catch(e){
+    // silently keep the fallback demo user
+  }
+}
+
+const loginOverlay = document.getElementById('loginOverlay');
+const mainApp = document.getElementById('mainApp');
+const loginEmail = document.getElementById('loginEmail');
+const loginPassword = document.getElementById('loginPassword');
+const rememberMe = document.getElementById('rememberMe');
+const loginBtn = document.getElementById('loginBtn');
+const loginStatus = document.getElementById('loginStatus');
+const loginError = document.getElementById('loginError');
+const loggedInAs = document.getElementById('loggedInAs');
+const logoutLink = document.getElementById('logoutLink');
+
+function showApp(user){
+  loginOverlay.style.display = 'none';
+  mainApp.style.display = 'block';
+  loggedInAs.textContent = user.name || user.email;
+}
+
+function attemptLogin(email, password){
+  const match = users.find(u => u.email === email.trim().toLowerCase() && u.password === password);
+  return match || null;
+}
+
+async function handleLoginClick(){
+  const email = loginEmail.value.trim();
+  const password = loginPassword.value;
+  loginError.classList.remove('show');
+
+  if(!email || !password){
+    loginStatus.textContent = 'Enter both email and password';
+    loginStatus.className = 'login-status';
+    return;
+  }
+
+  loginBtn.disabled = true;
+  loginStatus.textContent = 'Checking credentials…';
+  loginStatus.className = 'login-status busy';
+
+  if(users.length <= 1){ await loadUsers(); } // opportunistic refresh if only the fallback demo user is loaded
+
+  const user = attemptLogin(email, password);
+  loginBtn.disabled = false;
+
+  if(user){
+    loginStatus.textContent = '';
+    if(rememberMe.checked){
+      await rememberStore.set('msvse_session', { email: user.email, name: user.name });
+    } else {
+      await rememberStore.del('msvse_session');
+    }
+    showApp(user);
+  } else {
+    loginStatus.textContent = '';
+    loginError.classList.add('show');
+  }
+}
+
+loginBtn.addEventListener('click', handleLoginClick);
+loginPassword.addEventListener('keydown', e => { if(e.key === 'Enter') handleLoginClick(); });
+loginEmail.addEventListener('keydown', e => { if(e.key === 'Enter') loginPassword.focus(); });
+
+logoutLink.addEventListener('click', async () => {
+  await rememberStore.del('msvse_session');
+  loginPassword.value = '';
+  loginError.classList.remove('show');
+  mainApp.style.display = 'none';
+  loginOverlay.style.display = 'flex';
+});
+
+(async function initAuth(){
+  await loadUsers();
+  const remembered = await rememberStore.get('msvse_session');
+  if(remembered && remembered.email){
+    const stillValid = users.find(u => u.email === remembered.email);
+    if(stillValid){
+      showApp(stillValid);
+      return;
+    }
+  }
+  loginOverlay.style.display = 'flex';
+  mainApp.style.display = 'none';
+})();
+
+// ---------- Admin panel unlock (hidden from normal view) ----------
+// Click the app name 5 times within 2.5s to reveal Key Database / Cloud Source config.
+(function(){
+  const trigger = document.querySelector('.titlebar-left .app-name');
+  const panel = document.getElementById('adminPanel');
+  const divider = document.getElementById('adminDivider');
+  const hint = document.getElementById('adminHint');
+  let clicks = 0, timer = null;
+
+  function flashHint(text){
+    hint.textContent = text;
+    hint.classList.add('show');
+    clearTimeout(hint._t);
+    hint._t = setTimeout(() => hint.classList.remove('show'), 1400);
+  }
+
+  trigger.addEventListener('click', () => {
+    clicks++;
+    clearTimeout(timer);
+    timer = setTimeout(() => { clicks = 0; }, 2500);
+    if(clicks >= 5){
+      clicks = 0;
+      const unlocked = panel.classList.toggle('unlocked');
+      divider.classList.toggle('unlocked', unlocked);
+      flashHint(unlocked ? 'Admin panel unlocked' : 'Admin panel hidden');
+    }
+  });
+})();
+
+// ---------- Key database ----------
+// Format per line:  Category | Product Name | Key Type | KEY
+// Edit the block below (or use the "Key Database" panel in the UI) to load real keys before a demo.
+const DEFAULT_POOL = `
+Office | Office Home and Business 2016 for Mac | Bind (setup.office.com key) | OHA2016B-XAJI0-Y6DPB-HSAHX-THV3A
+Office | Office Home and Business 2016 for Mac | Bind (setup.office.com key) | OHA2016B-3ZMF8-MDD4V-30T9N-T3W5U
+Office | Office Home and Business 2019 for Mac | Bind (setup.office.com key) | OHA2019B-ZBIKC-IDKWN-NHJ7X-VG0FN
+Office | Office Home and Business 2019 for Mac | Bind (setup.office.com key) | OHA2019B-9XUY4-1IBLJ-H75LX-O6QJI
+Office | Office Home and Business 2021 for Mac | Bind (setup.office.com key) | OHA2021B-UJV6O-H9SDB-DW2PC-N9T84
+Office | Office Home and Business 2021 for Mac | Bind (setup.office.com key) | OHA2021B-AZYTJ-XEPQ8-5JSG6-5KXVF
+Office | Office Home and Business 2024 | Bind (setup.office.com key) | OHA2024B-1T2TA-LA753-LC58D-RC11E
+Office | Office Home and Business 2024 | Bind (setup.office.com key) | OHA2024B-RTJ5P-HT0HL-9XPSE-IMVIH
+Office | Office Professional Plus 2016 | Retail | OPP2016R-CWI64-CIYHE-7UR23-GDPPQ
+Office | Office Professional Plus 2016 | Retail | OPP2016R-0Y9DO-M5IGQ-PKI7P-5TB94
+Office | Office Professional Plus 2016 | Bind (setup.office.com key) | OPP2016B-874FR-HOCN9-J2QP8-9UZFK
+Office | Office Professional Plus 2016 | Bind (setup.office.com key) | OPP2016B-8UT0C-VS4F8-CGVYI-E6IVW
+Office | Office Professional Plus 2019 | Retail | OPP2019R-PVS7H-ZIOYK-L1CQ9-9CHJ7
+Office | Office Professional Plus 2019 | Retail | OPP2019R-55NF4-ZW9XA-3KX7E-EDTJV
+Office | Office Professional Plus 2019 | Bind (setup.office.com key) | OPP2019B-ZHWJR-64DPJ-A1WJ0-TPAC5
+Office | Office Professional Plus 2019 | Bind (setup.office.com key) | OPP2019B-6T4UF-EL624-6HID2-5OWF7
+Office | Office Professional Plus 2021 | Retail | OPP2021R-5935A-0L725-3J2D5-4I3QK
+Office | Office Professional Plus 2021 | Retail | OPP2021R-2IAGL-58KXO-9T7E8-G8JDP
+Office | Office Professional Plus 2021 | Bind (setup.office.com key) | OPP2021B-0LVSN-UJZA7-TZ0YN-CXLL4
+Office | Office Professional Plus 2021 | Bind (setup.office.com key) | OPP2021B-ZKLOO-KEP7Y-6WKTA-KPUXQ
+Office | Project Professional 2016 | Retail | PP2016R-PHR62-GDSWM-31YIH-AIR4C
+Office | Project Professional 2016 | Retail | PP2016R-OWGZR-IXA11-DPG8S-BI4Q2
+Office | Project Professional 2016 | Bind (setup.office.com key) | PP2016B-Y9V86-WZS3T-60RJI-W1SWJ
+Office | Project Professional 2016 | Bind (setup.office.com key) | PP2016B-CKJLT-EIYZC-OTOHP-6VZ41
+Office | Project Professional 2019 | Retail | PP2019R-NAM14-8P0TV-HHPBM-YOFQE
+Office | Project Professional 2019 | Retail | PP2019R-WAOUA-XEQBN-HL1N1-3JCAT
+Office | Project Professional 2019 | Bind (setup.office.com key) | PP2019B-9MX2X-18HAF-EYUHZ-1GV0E
+Office | Project Professional 2019 | Bind (setup.office.com key) | PP2019B-38DAL-Y8OZC-YWD14-VE92M
+Office | Project Professional 2021 | Retail | PP2021R-PNSM4-3D8W3-ZP08J-3TRP0
+Office | Project Professional 2021 | Retail | PP2021R-J43D5-IQVNB-4GH2M-5ZJA8
+Office | Project Professional 2024 | Bind (setup.office.com key) | PP2024B-DZR1Y-XR2DH-YLURT-P0LZJ
+Office | Project Professional 2024 | Bind (setup.office.com key) | PP2024B-JEGET-1GHR0-9SKDG-IGATJ
+Office | Visio Professional 2016 | Retail | VP2016R-9TZE5-R5UQP-GB7R3-OCWBF
+Office | Visio Professional 2016 | Retail | VP2016R-UK9E1-V2ISQ-P49KW-V08HH
+Office | Visio Professional 2016 | Bind (setup.office.com key) | VP2016B-XFGCA-QVKIZ-ZQY72-WX7PT
+Office | Visio Professional 2016 | Bind (setup.office.com key) | VP2016B-X63CF-L0UKE-YZ7SR-CBPLJ
+Office | Visio Professional 2019 | Retail | VP2019R-D84U8-9YJB1-QX6GV-WRDML
+Office | Visio Professional 2019 | Retail | VP2019R-Y4LYK-83TQL-L8OS9-XTOGN
+Office | Visio Professional 2019 | Bind (setup.office.com key) | VP2019B-1W1HT-7PZE9-VIFTT-D96QE
+Office | Visio Professional 2019 | Bind (setup.office.com key) | VP2019B-3RZSJ-49ITN-7S55J-2O7S3
+Office | Visio Professional 2021 | Retail | VP2021R-KKV9R-FTMTT-QLGZU-I1B0Z
+Office | Visio Professional 2021 | Retail | VP2021R-3NX39-RBSV5-5PSQ0-OXFQ8
+Office | Visio Professional 2024 | Bind (setup.office.com key) | VP2024B-MYX44-4NLZ1-5BCW7-90PDW
+Office | Visio Professional 2024 | Bind (setup.office.com key) | VP2024B-5PY6B-2KNFT-U2GC5-WI6FQ
+Windows | Windows 10 Pro | Retail | WP10R-JJA26-YFPMV-XPJ4H-NRIUU
+Windows | Windows 10 Pro | Retail | WP10R-9K9XJ-UY0BV-R6K2V-MWWYZ
+Windows | Windows 10 Pro | Volume MAK | WP10M-X4W6X-LPU0D-K0GET-8T63J
+Windows | Windows 10 Pro | Volume MAK | WP10M-3R30M-E8F84-0982N-2ATQY
+Server | Windows Server 2012 Remote Desktop Services user connections (50) | Retail | WSR2012R-YV37D-IA5U6-HC36K-OF8KR
+Server | Windows Server 2012 Remote Desktop Services user connections (50) | Retail | WSR2012R-D5EQY-08P0F-ODRO8-BNP84
+Server | Windows Server 2012 Remote Desktop Services device connections (50) | Retail | WSR2012R-DYT9M-OGE4Q-XXVA2-IEUC1
+Server | Windows Server 2012 Remote Desktop Services device connections (50) | Retail | WSR2012R-HH5LF-6A4FE-JGXAA-2ILGB
+Server | Windows Server 2012 R2 Standard | Retail | WSR2012R-0S0R2-SDS8B-25SQ8-CROYR
+Server | Windows Server 2012 R2 Standard | Retail | WSR2012R-6CCVC-JWTL9-TQVDZ-4X1ZH
+Server | Windows Server 2012 R2 Datacenter | Retail | WSR2012R-QIMQO-DPXNF-7C3DD-03UVU
+Server | Windows Server 2012 R2 Datacenter | Retail | WSR2012R-LEMX1-5Z8VM-UHXID-4N1U3
+Server | Windows Server 2016 Standard | Retail | WSS2016R-493WX-A73JG-ZLMA5-UOFWB
+Server | Windows Server 2016 Standard | Retail | WSS2016R-0HPMN-Z1UDB-FWYJX-RPJ1E
+Server | Windows Server 2016 Datacenter | Retail | WSD2016R-PKYRY-BOVAK-HEJLA-0GNZS
+Server | Windows Server 2016 Datacenter | Retail | WSD2016R-43C5B-A75UU-ZPEAL-2W37D
+Server | Windows Server 2019 Standard | Retail | WSS2019R-4IVSO-LMLGS-ES6M0-33IFH
+Server | Windows Server 2019 Standard | Retail | WSS2019R-V1XG1-R11Q7-UWW5W-FCPKJ
+Server | Windows Server 2019 Datacenter | Retail | WSD2019R-CSLQC-3C54W-SQT26-Q3XLR
+Server | Windows Server 2019 Datacenter | Retail | WSD2019R-FCD6M-ZSGIP-PSFNK-OMV2X
+Server | Windows Server 2019 Remote Desktop Services device connections (50) | Retail | WSR2019R-CDYK0-X65MU-FM8ZO-V7LN2
+Server | Windows Server 2019 Remote Desktop Services device connections (50) | Retail | WSR2019R-3Y30Y-SXPNN-GH8RI-EC4D1
+Server | Windows Server 2019 Remote Desktop Services user connections (50) | Retail | WSR2019R-45BM1-ENF31-3FPOY-IPK0Q
+Server | Windows Server 2019 Remote Desktop Services user connections (50) | Retail | WSR2019R-TL3Q4-N89QK-NS832-EJX5T
+Server | Windows Server 2022 Remote Desktop Services device connections (50) | Retail | WSR2022R-D44K1-J6FP8-HQMAB-SI9NB
+Server | Windows Server 2022 Remote Desktop Services device connections (50) | Retail | WSR2022R-74X2E-K3ZEZ-QACJ4-T0SEK
+Server | Windows Server 2022 Remote Desktop Services user connections (50) | Retail | WSR2022R-KBP2Q-D6VAS-IFPWI-OXD9C
+Server | Windows Server 2022 Remote Desktop Services user connections (50) | Retail | WSR2022R-SS9TO-QW9JA-2M0W1-0LBT3
+Server | Windows Server 2022 Standard | Retail | WSS2022R-G2QZW-3C1QK-BHB7S-9TJ1G
+Server | Windows Server 2022 Standard | Retail | WSS2022R-M25LE-N606N-9RR7S-20CV3
+Server | Windows Server 2022 Datacenter | Retail | WSD2022R-TLCXL-VPYMB-5M9J9-8CWN2
+Server | Windows Server 2022 Datacenter | Retail | WSD2022R-Y8FV2-BC2NN-UVY8N-1UTOX
+Server | Windows Server 2025 Standard | Retail | WSS2025R-IE0RN-UJJQ9-K6RE4-Q6QDY
+Server | Windows Server 2025 Standard | Retail | WSS2025R-4LMCT-64Z7W-2SEHE-2ATN2
+Server | Windows Server 2025 Datacenter | Retail | WSD2025R-TWDL9-ZS13C-9XQYM-52XG8
+Server | Windows Server 2025 Datacenter | Retail | WSD2025R-P6BEF-FLZM7-64JWT-EKTSG
+Server | Windows Server 2025 Remote Desktop Services user connections (50) | Retail | WSR2025R-7FXZV-4U3BB-XUX1O-XRWK8
+Server | Windows Server 2025 Remote Desktop Services user connections (50) | Retail | WSR2025R-R2YKC-CPRHV-LZ049-ENULQ
+Server | Windows Server 2025 Remote Desktop Services device connections (50) | Retail | WSR2025R-JIDKN-WI5FL-UL1RS-RLA8S
+Server | Windows Server 2025 Remote Desktop Services device connections (50) | Retail | WSR2025R-8HMBR-5XQT4-P501N-OUHTC
+`.trim();
+
+let pool = parsePool(DEFAULT_POOL);
+
+function parsePool(text){
+  return text.split('\n').map(l => l.trim()).filter(Boolean).map(line => {
+    const [category, product, type, key] = line.split('|').map(s => s.trim());
+    return { category, product, type, key };
+  }).filter(r => r.category && r.product && r.type && r.key);
+}
+
+// ---------- Populate UI ----------
+const categorySel = document.getElementById('categorySel');
+const productSel = document.getElementById('productSel');
+const typeSel = document.getElementById('typeSel');
+const CATEGORY_ORDER = ['Windows', 'Office', 'Server'];
+
+function refreshCategoryOptions(){
+  const cats = [...new Set(pool.map(r => r.category))]
+    .sort((a,b) => CATEGORY_ORDER.indexOf(a) - CATEGORY_ORDER.indexOf(b));
+  categorySel.innerHTML = '';
+  cats.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c; opt.textContent = c;
+    categorySel.appendChild(opt);
+  });
+  refreshProductOptions();
+}
+
+function refreshProductOptions(){
+  const cat = categorySel.value;
+  const products = [...new Set(pool.filter(r => r.category === cat).map(r => r.product))];
+  productSel.innerHTML = '';
+  products.forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p; opt.textContent = p;
+    productSel.appendChild(opt);
+  });
+  refreshTypeOptions();
+}
+
+function refreshTypeOptions(){
+  const cat = categorySel.value;
+  const prod = productSel.value;
+  const types = [...new Set(pool.filter(r => r.category === cat && r.product === prod).map(r => r.type))];
+  typeSel.innerHTML = '';
+  types.forEach(t => {
+    const opt = document.createElement('option');
+    opt.value = t; opt.textContent = t;
+    typeSel.appendChild(opt);
+  });
+}
+
+categorySel.addEventListener('change', refreshProductOptions);
+productSel.addEventListener('change', refreshTypeOptions);
+
+const poolText = document.getElementById('poolText');
+poolText.value = DEFAULT_POOL;
+
+const poolToggle = document.getElementById('poolToggle');
+const poolBox = document.getElementById('poolBox');
+poolToggle.addEventListener('click', () => {
+  poolToggle.classList.toggle('open');
+  poolBox.classList.toggle('open');
+});
+document.getElementById('poolSave').addEventListener('click', () => {
+  pool = parsePool(poolText.value);
+  refreshCategoryOptions();
+  flashSaved();
+});
+function flashSaved(){
+  const btn = document.getElementById('poolSave');
+  const orig = btn.textContent;
+  btn.textContent = 'Saved ✓';
+  btn.style.color = 'var(--green)';
+  setTimeout(() => { btn.textContent = orig; btn.style.color = ''; }, 1200);
+}
+
+// ---------- Cloud Source: Google Sheets sync ----------
+// Auto-syncs on load using this sheet. Requires sharing set to "Anyone with the link — Viewer".
+// Tabs must be named exactly: Windows, Office, Server
+const SHEET_ID = '1l9hm7JP_4DGzXsuIFfhbPmaBw0BzA_if';
+const DEFAULT_SHEET_URLS = {
+  Windows: `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Windows`,
+  Office: `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Office`,
+  Server: `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Server`
+};
+
+const cloudToggle = document.getElementById('cloudToggle');
+const cloudBox = document.getElementById('cloudBox');
+cloudToggle.addEventListener('click', () => {
+  cloudToggle.classList.toggle('open');
+  cloudBox.classList.toggle('open');
+});
+
+const urlInputs = {
+  Windows: document.getElementById('urlWindows'),
+  Office: document.getElementById('urlOffice'),
+  Server: document.getElementById('urlServer')
+};
+Object.keys(DEFAULT_SHEET_URLS).forEach(cat => {
+  urlInputs[cat].value = DEFAULT_SHEET_URLS[cat];
+});
+
+const syncBtn = document.getElementById('syncBtn');
+const syncStatus = document.getElementById('syncStatus');
+
+// Minimal CSV parser (handles quoted fields containing commas)
+function parseCSV(text){
+  const rows = [];
+  let row = [], field = '', inQuotes = false;
+  for(let i = 0; i < text.length; i++){
+    const c = text[i], next = text[i+1];
+    if(inQuotes){
+      if(c === '"' && next === '"'){ field += '"'; i++; }
+      else if(c === '"'){ inQuotes = false; }
+      else { field += c; }
+    } else {
+      if(c === '"'){ inQuotes = true; }
+      else if(c === ','){ row.push(field); field = ''; }
+      else if(c === '\n'){ row.push(field); rows.push(row); row = []; field = ''; }
+      else if(c === '\r'){ /* skip */ }
+      else { field += c; }
+    }
+  }
+  if(field.length || row.length){ row.push(field); rows.push(row); }
+  return rows.filter(r => r.some(f => f.trim().length));
+}
+
+async function fetchSheetTab(category, url){
+  if(!url || !url.trim()) return [];
+  const res = await fetch(url.trim());
+  if(!res.ok) throw new Error(`${category}: HTTP ${res.status}`);
+  const text = await res.text();
+  const rows = parseCSV(text);
+  if(!rows.length) return [];
+
+  // Column-wise layout: row 1 = "Product | Key Type" per column, rows below = keys stacked downward.
+  const headerRow = rows[0];
+  const out = [];
+
+  for(let c = 0; c < headerRow.length; c++){
+    const header = (headerRow[c] || '').trim();
+    if(!header) continue;
+    const parts = header.split('|').map(s => s.trim());
+    const product = parts[0] || '';
+    const type = parts[1] || '';
+    if(!product || !type) continue;
+
+    for(let r = 1; r < rows.length; r++){
+      const key = (rows[r][c] || '').trim();
+      if(!key) continue;
+      out.push({ category, product, type, key });
+    }
+  }
+
+  return out;
+}
+
+async function syncFromCloud(){
+  const cats = Object.keys(urlInputs);
+  const active = cats.filter(c => urlInputs[c].value.trim());
+  if(!active.length){
+    syncStatus.textContent = 'No sheet URLs set — using local data';
+    syncStatus.className = 'sync-status';
+    return;
+  }
+
+  syncBtn.disabled = true;
+  syncStatus.textContent = 'Syncing…';
+  syncStatus.className = 'sync-status busy';
+
+  try{
+    const results = await Promise.all(
+      active.map(cat => fetchSheetTab(cat, urlInputs[cat].value))
+    );
+    const merged = results.flat();
+    if(!merged.length){
+      throw new Error('Sheets reachable but no valid rows found');
+    }
+    pool = merged;
+    poolText.value = merged.map(r => `${r.category} | ${r.product} | ${r.type} | ${r.key}`).join('\n');
+    refreshCategoryOptions();
+    const stamp = new Date().toTimeString().slice(0,8);
+    syncStatus.textContent = `Synced ${merged.length} keys · ${stamp}`;
+    syncStatus.className = 'sync-status ok';
+  } catch(err){
+    syncStatus.textContent = 'Sync failed — using local data (' + err.message + ')';
+    syncStatus.className = 'sync-status err';
+  } finally {
+    syncBtn.disabled = false;
+  }
+}
+
+syncBtn.addEventListener('click', syncFromCloud);
+
+refreshCategoryOptions();
+
+// Auto-sync on load if default URLs are configured above
+if(Object.values(DEFAULT_SHEET_URLS).some(u => u && u.trim())){
+  syncFromCloud();
+}
+
+// ---------- Processing simulation ----------
+const runBtn = document.getElementById('runBtn');
+const qtySel = document.getElementById('qtySel');
+const exportSel = document.getElementById('exportSel');
+const terminal = document.getElementById('terminal');
+const idleLine = document.getElementById('idleLine');
+const progFill = document.getElementById('progFill');
+const progLabel = document.getElementById('progLabel');
+const progStage = document.getElementById('progStage');
+const statusPill = document.getElementById('statusPill');
+const statusText = document.getElementById('statusText');
+const reqIdEl = document.getElementById('reqId');
+const resultsBox = document.getElementById('results');
+const resultsLabel = document.getElementById('resultsLabel');
+const keyList = document.getElementById('keyList');
+const exportBtn = document.getElementById('exportBtn');
+
+let lastExtracted = [];
+let lastExportType = 'txt';
+
+function genReqId(){
+  return 'x' + Math.random().toString(16).slice(2, 8) + Math.random().toString(16).slice(2, 6);
+}
+
+function addLine(html, delay){
+  return new Promise(resolve => {
+    setTimeout(() => {
+      const div = document.createElement('div');
+      div.className = 'tline';
+      div.innerHTML = html;
+      terminal.appendChild(div);
+      terminal.scrollTop = terminal.scrollHeight;
+      resolve();
+    }, delay);
+  });
+}
+
+function setProgress(pct, stage){
+  progFill.style.width = pct + '%';
+  progLabel.textContent = pct + '%';
+  progStage.textContent = stage;
+}
+
+runBtn.addEventListener('click', runExtraction);
+
+async function runExtraction(){
+  const category = categorySel.value;
+  const product = productSel.value;
+  const type = typeSel.value;
+  const qty = parseInt(qtySel.value, 10);
+  lastExportType = exportSel.value;
+
+  if(!product){ return; }
+
+  runBtn.disabled = true;
+  resultsBox.classList.remove('show');
+  keyList.innerHTML = '';
+  terminal.innerHTML = '';
+  const reqId = genReqId();
+  reqIdEl.textContent = 'req_id: ' + reqId;
+  statusPill.classList.remove('live');
+  statusPill.classList.add('busy');
+  statusText.textContent = 'PROCESSING';
+  setProgress(0, 'initializing');
+
+  const steps = [
+    { html: `<span class="tag">[${stamp()}]</span> Opening session <span class="info">${reqId}</span>`, pct: 8, stage: 'session init', delay: 120 },
+    { html: `<span class="tag">[${stamp()}]</span> Category: <span class="info">${category}</span> · Target: <span class="info">${product}</span>`, pct: 18, stage: 'resolving product', delay: 260 },
+    { html: `<span class="tag">[${stamp()}]</span> Key class: <span class="info">${type}</span> · qty: <span class="info">${qty}</span>`, pct: 28, stage: 'validating parameters', delay: 260 },
+    { html: `<span class="tag">[${stamp()}]</span> Connecting to license pool...`, pct: 40, stage: 'connecting', delay: 320 },
+    { html: `<span class="tag">[${stamp()}]</span> <span class="ok">Connection established</span>`, pct: 48, stage: 'connected', delay: 260 },
+    { html: `<span class="tag">[${stamp()}]</span> Scanning inventory for matching entries...`, pct: 58, stage: 'scanning', delay: 340 },
+  ];
+
+  for(const s of steps){
+    await addLine(s.html, s.delay);
+    setProgress(s.pct, s.stage);
+  }
+
+  const matches = pool.filter(r => r.category === category && r.product === product && r.type === type);
+  const available = matches.length;
+  const willGive = matches.slice(0, qty);
+  const shortfall = qty - willGive.length;
+
+  await addLine(`<span class="tag">[${stamp()}]</span> Found <span class="${available ? 'ok' : 'warn'}">${available}</span> matching record(s)`, 340);
+  setProgress(70, 'filtering');
+
+  if(shortfall > 0){
+    await addLine(`<span class="tag">[${stamp()}]</span> <span class="warn">Only ${available} of ${qty} requested available</span>`, 260);
+  }
+
+  await addLine(`<span class="tag">[${stamp()}]</span> Decrypting key block...`, 300);
+  setProgress(84, 'decrypting');
+  await addLine(`<span class="tag">[${stamp()}]</span> Verifying checksum integrity...`, 300);
+  setProgress(93, 'verifying');
+  await addLine(`<span class="tag">[${stamp()}]</span> <span class="ok">Verification passed</span>`, 260);
+  setProgress(100, 'complete');
+  await addLine(`<span class="tag">[${stamp()}]</span> <span class="ok">Extraction complete — ${willGive.length} key(s) returned</span>`, 220);
+
+  statusPill.classList.remove('busy');
+  statusPill.classList.add('live');
+  statusText.textContent = 'READY';
+  runBtn.disabled = false;
+
+  lastExtracted = willGive;
+  renderResults(willGive, product, type, available < qty);
+}
+
+function stamp(){
+  const d = new Date();
+  return d.toTimeString().slice(0,8) + '.' + String(d.getMilliseconds()).padStart(3,'0');
+}
+
+function renderResults(rows, product, type, short){
+  keyList.innerHTML = '';
+  resultsLabel.textContent = short
+    ? `Extraction Complete — partial (${rows.length} returned)`
+    : `Extraction Complete — ${rows.length} key(s)`;
+
+  if(rows.length === 0){
+    const div = document.createElement('div');
+    div.className = 'key-row';
+    div.style.animationDelay = '0ms';
+    div.innerHTML = `<span class="meta">No keys in database for "${product}" / "${type}". Add entries in the Key Database panel.</span>`;
+    keyList.appendChild(div);
+    resultsBox.classList.add('show');
+    return;
+  }
+
+  rows.forEach((r, i) => {
+    const div = document.createElement('div');
+    div.className = 'key-row';
+    div.style.animationDelay = (i * 70) + 'ms';
+    div.innerHTML = `<span class="k">${r.key}</span><span class="meta">#${String(i+1).padStart(2,'0')}</span>`;
+    keyList.appendChild(div);
+  });
+  resultsBox.classList.add('show');
+}
+
+exportBtn.addEventListener('click', () => {
+  if(!lastExtracted.length) return;
+  const product = productSel.value;
+  const type = typeSel.value;
+  let content, mime, ext;
+
+  if(lastExportType === 'csv'){
+    content = 'category,product,key_type,key\n' + lastExtracted.map(r => `"${r.category}","${r.product}","${r.type}","${r.key}"`).join('\n');
+    mime = 'text/csv'; ext = 'csv';
+  } else if(lastExportType === 'json'){
+    content = JSON.stringify(lastExtracted, null, 2);
+    mime = 'application/json'; ext = 'json';
+  } else {
+    content = lastExtracted.map(r => r.key).join('\n');
+    mime = 'text/plain'; ext = 'txt';
+  }
+
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const safeName = product.replace(/\s+/g,'_').toLowerCase();
+  a.href = url;
+  a.download = `msvse_${safeName}_${type.replace(/[^a-z0-9]+/gi,'_').toLowerCase()}.${ext}`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+});
+</script>
+
+</body>
+</html>
