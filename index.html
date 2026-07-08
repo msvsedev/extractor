@@ -779,7 +779,7 @@ let currentUser = null;
 // Bump this whenever you deploy a new version of this file. Any "remembered" login
 // tied to an older build ID is treated as stale and forces a fresh login — this is
 // what makes remember-me survive normal reloads but NOT survive you updating the app.
-const APP_BUILD_ID = '2026-07-08.2';
+const APP_BUILD_ID = '2026-07-08.4';
 
 // Fallback so the demo still works before the Users tab / sharing is set up.
 let users = [
@@ -816,6 +816,24 @@ const rememberStore = {
     try{ localStorage.removeItem('msvse_' + key); }catch(e){}
     this._mem = this._mem || {};
     delete this._mem[key];
+  },
+  async list(prefix){
+    const keys = new Set();
+    if(window.storage){
+      try{
+        const r = await window.storage.list(prefix, false);
+        if(r && r.keys) r.keys.forEach(k => keys.add(k));
+      }catch(e){}
+    }
+    try{
+      for(let i = 0; i < localStorage.length; i++){
+        const k = localStorage.key(i);
+        if(k && k.startsWith('msvse_' + prefix)) keys.add(k.slice('msvse_'.length));
+      }
+    }catch(e){}
+    this._mem = this._mem || {};
+    Object.keys(this._mem).forEach(k => { if(k.startsWith(prefix)) keys.add(k); });
+    return [...keys];
   }
 };
 
@@ -891,6 +909,51 @@ function showApp(user){
   mainApp.style.display = 'block';
   loggedInAs.textContent = user.name || user.email;
   initBalancePanel();
+  startAccountWatch();
+}
+
+// Wipes everything tied to an email: the remembered session (if it's theirs) and every
+// day's balance history. Used when a user's row disappears from the Users sheet, so if
+// that same email is ever re-added later, they start clean at the Starter plan rather
+// than resuming whatever plan/balance they had before being removed.
+async function clearUserData(email){
+  const remembered = await rememberStore.get('msvse_session');
+  if(remembered && remembered.email === email){
+    await rememberStore.del('msvse_session');
+  }
+  const balanceKeys = await rememberStore.list(`balance:${email}:`);
+  for(const k of balanceKeys){ await rememberStore.del(k); }
+}
+
+function forceLogout(message){
+  currentUser = null;
+  stopAccountWatch();
+  mainApp.style.display = 'none';
+  loginOverlay.style.display = 'flex';
+  loginPassword.value = '';
+  loginError.classList.remove('show');
+  if(message){
+    loginStatus.textContent = message;
+    loginStatus.className = 'login-status';
+  }
+}
+
+let accountWatchTimer = null;
+function startAccountWatch(){
+  stopAccountWatch();
+  accountWatchTimer = setInterval(async () => {
+    if(!currentUser) return;
+    const email = currentUser.email;
+    await loadUsers();
+    const stillValid = users.find(u => u.email === email);
+    if(!stillValid){
+      await clearUserData(email);
+      forceLogout('Your account was removed. Contact admin if this is unexpected.');
+    }
+  }, 20000);
+}
+function stopAccountWatch(){
+  if(accountWatchTimer){ clearInterval(accountWatchTimer); accountWatchTimer = null; }
 }
 
 function attemptLogin(email, password){
@@ -938,10 +1001,7 @@ loginEmail.addEventListener('keydown', e => { if(e.key === 'Enter') loginPasswor
 
 logoutLink.addEventListener('click', async () => {
   await rememberStore.del('msvse_session');
-  loginPassword.value = '';
-  loginError.classList.remove('show');
-  mainApp.style.display = 'none';
-  loginOverlay.style.display = 'flex';
+  forceLogout();
 });
 
 // ---------- Change password ----------
@@ -1152,6 +1212,9 @@ redeemInput.addEventListener('keydown', e => { if(e.key === 'Enter') handleRedee
       showApp(stillValid);
       return;
     }
+    await clearUserData(remembered.email);
+    loginStatus.textContent = 'Your account is no longer active. Contact admin if this is unexpected.';
+    loginStatus.className = 'login-status';
   } else if(remembered){
     await rememberStore.del('msvse_session'); // stale build — force fresh login
   }
@@ -1486,18 +1549,9 @@ async function syncFromCloud(silent){
 
 syncBtn.addEventListener('click', () => syncFromCloud(false));
 
-refreshCategoryOptions();
-
-// Auto-sync on load if default URLs are configured above
-if(Object.values(DEFAULT_SHEET_URLS).some(u => u && u.trim())){
-  syncFromCloud(false);
-}
-
-// Keep the key database live — re-fetch the sheet every second so new stock
-// (or codes removed/edited) show up without needing a manual Sync click.
-setInterval(() => syncFromCloud(true), 1000);
-
 // ---------- Processing simulation ----------
+// (declared here, before refreshCategoryOptions() below, because checkStockAvailability()
+// — called as part of that refresh chain — reads qtySel/runBtn/stockWarning immediately)
 const runBtn = document.getElementById('runBtn');
 const qtySel = document.getElementById('qtySel');
 const exportSel = document.getElementById('exportSel');
@@ -1515,6 +1569,17 @@ const keyList = document.getElementById('keyList');
 const exportBtn = document.getElementById('exportBtn');
 const stockWarning = document.getElementById('stockWarning');
 let isExtracting = false;
+
+refreshCategoryOptions();
+
+// Auto-sync on load if default URLs are configured above
+if(Object.values(DEFAULT_SHEET_URLS).some(u => u && u.trim())){
+  syncFromCloud(false);
+}
+
+// Keep the key database live — re-fetch the sheet every second so new stock
+// (or codes removed/edited) show up without needing a manual Sync click.
+setInterval(() => syncFromCloud(true), 1000);
 
 // Hard preflight block: can't submit a quantity higher than what's actually in stock
 // for the selected product/type. Runs on every dropdown/qty change and after every sync.
