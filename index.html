@@ -304,12 +304,18 @@
     border-radius: 12px;
     padding: 28px 26px 24px;
   }
-  .login-brand{
-    display:flex; align-items:center; gap:10px;
-    justify-content:center;
-    margin-bottom: 6px;
+  .text-logo{ text-align:center; margin-bottom: 4px; }
+  .text-logo .mark{
+    font-family:'JetBrains Mono', monospace; font-weight:700;
+    font-size: 27px; letter-spacing: 5px; color: var(--text);
+    line-height: 1.2;
   }
-  .login-brand .app-name{ font-size:14px; }
+  .text-logo .mark .bracket{ color: var(--accent); }
+  .text-logo .tagline{
+    font-family:'JetBrains Mono', monospace; font-size: 10px;
+    letter-spacing: 5px; color: var(--muted); margin-top: 6px;
+    text-transform: uppercase;
+  }
   .login-sub{
     text-align:center; color: var(--muted);
     font-family:'JetBrains Mono', monospace; font-size:10.5px;
@@ -430,9 +436,9 @@
 <!-- LOGIN OVERLAY -->
 <div class="login-overlay" id="loginOverlay">
   <div class="login-card">
-    <div class="login-brand">
-      <div class="dots"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div>
-      <div class="app-name">MSVSE<span>::</span>KEY EXTRACTOR</div>
+    <div class="text-logo">
+      <div class="mark"><span class="bracket">[</span>MSVSE<span class="bracket">]</span></div>
+      <div class="tagline">Key Extractor</div>
     </div>
     <div class="login-sub">SIGN IN TO CONTINUE</div>
 
@@ -674,6 +680,13 @@ function bucketForType(type){
   return (type || '').trim().toLowerCase() === 'retail' ? 'retail' : 'bindMak';
 }
 
+// Accounts listed here can log in and see the app, but can't run extractions —
+// used for demo/trial accounts that should be nudged toward a paid plan.
+const EXTRACTION_BLOCKED_EMAILS = ['demo@msvseext.io'];
+function extractionBlocked(user){
+  return EXTRACTION_BLOCKED_EMAILS.includes((user.email || '').trim().toLowerCase());
+}
+
 let currentUser = null;
 
 // Fallback so the demo still works before the Users tab / sharing is set up.
@@ -866,13 +879,16 @@ const balRetailBar = document.getElementById('balRetailBar');
 
 function renderBalance(bal, user){
   const plan = planFor(user.plan);
-  balancePlan.textContent = (user.plan || 'Starter');
+  const blocked = extractionBlocked(user);
+  balancePlan.textContent = blocked ? 'TRIAL — NO ACCESS' : (user.plan || 'Starter');
+  balancePlan.style.color = blocked ? 'var(--red)' : '';
+  balancePlan.style.borderColor = blocked ? 'var(--red)' : '';
   balBindMak.textContent = `${bal.bindMak} / ${plan.bindMak}`;
   balRetail.textContent = `${bal.retail} / ${plan.retail}`;
-  balBindMak.className = 'balance-value' + (bal.bindMak <= 0 ? ' zero' : '');
-  balRetail.className = 'balance-value' + (bal.retail <= 0 ? ' zero' : '');
-  balBindMakBar.style.width = Math.min(100, (bal.bindMak / plan.bindMak) * 100) + '%';
-  balRetailBar.style.width = Math.min(100, (bal.retail / plan.retail) * 100) + '%';
+  balBindMak.className = 'balance-value' + (bal.bindMak <= 0 || blocked ? ' zero' : '');
+  balRetail.className = 'balance-value' + (bal.retail <= 0 || blocked ? ' zero' : '');
+  balBindMakBar.style.width = (blocked ? 0 : Math.min(100, (bal.bindMak / plan.bindMak) * 100)) + '%';
+  balRetailBar.style.width = (blocked ? 0 : Math.min(100, (bal.retail / plan.retail) * 100)) + '%';
 }
 
 async function initBalancePanel(){
@@ -1360,6 +1376,20 @@ async function runExtraction(){
 
   if(!product){ return; }
 
+  if(extractionBlocked(currentUser)){
+    resultsBox.classList.remove('show');
+    keyList.innerHTML = '';
+    terminal.innerHTML = '';
+    const reqId = genReqId();
+    reqIdEl.textContent = 'req_id: ' + reqId;
+    setProgress(0, 'blocked');
+    await addLine(`<span class="tag">[${stamp()}]</span> Opening session <span class="info">${reqId}</span>`, 100);
+    await addLine(`<span class="tag">[${stamp()}]</span> <span class="warn">Account tier: TRIAL — extraction not permitted</span>`, 260);
+    setProgress(100, 'blocked');
+    renderPurchaseRequired();
+    return;
+  }
+
   const bucket = bucketForType(type);
   const bucketLabel = bucket === 'retail' ? 'Retail' : 'Bind/MAK';
   const bal = await getBalance(currentUser);
@@ -1443,6 +1473,20 @@ async function runExtraction(){
 function stamp(){
   const d = new Date();
   return d.toTimeString().slice(0,8) + '.' + String(d.getMilliseconds()).padStart(3,'0');
+}
+
+function renderPurchaseRequired(){
+  resultsLabel.textContent = 'Extraction Blocked';
+  keyList.innerHTML = `
+    <div class="login-error show" style="margin:0;">
+      <p>This is a trial account and isn't licensed to extract keys. Purchase a paid plan to unlock extraction.</p>
+      <a class="telegram-btn" href="tg://user?id=${TELEGRAM_ADMIN_ID}" target="_blank" rel="noopener">
+        <svg viewBox="0 0 240 240" fill="currentColor"><path d="M120,0C53.7,0,0,53.7,0,120s53.7,120,120,120,120-53.7,120-120S186.3,0,120,0z M175.3,82.3l-19.9,93.8c-1.5,6.6-5.4,8.3-11,5.1l-30.5-22.5-14.7,14.2c-1.6,1.6-3,3-6.2,3l2.2-31.3,57-51.5c2.5-2.2-0.5-3.4-3.8-1.2l-70.5,44.4-30.4-9.5c-6.6-2.1-6.7-6.6,1.4-9.7l118.9-45.8C173.4,68.8,177.4,71.6,175.3,82.3z"/></svg>
+        Message admin to purchase a plan
+      </a>
+    </div>
+  `;
+  resultsBox.classList.add('show');
 }
 
 function renderResults(rows, product, type, short, quotaBlocked){
