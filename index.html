@@ -115,6 +115,12 @@
     font-family:'JetBrains Mono', monospace;
     text-transform: uppercase;
   }
+  .stock-warning{
+    display:none;
+    font-family:'JetBrains Mono', monospace; font-size:10.5px;
+    color: var(--red); line-height:1.5;
+  }
+  .stock-warning.show{ display:block; }
   select{
     appearance:none; -webkit-appearance:none;
     background: #0c111a url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6"><path d="M0 0L5 6L10 0" fill="none" stroke="%236b7789" stroke-width="1.4"/></svg>') no-repeat right 12px center;
@@ -347,6 +353,13 @@
     padding: 10px 12px; font-size: 13px; font-family:'Inter', sans-serif;
   }
   .login-field input:focus{ outline:none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79,163,255,.12); }
+  .login-remember{
+    display:flex; align-items:center; gap:8px;
+    margin-bottom: 18px;
+    font-family:'JetBrains Mono', monospace; font-size:11px; color: var(--muted);
+    user-select:none; cursor:pointer;
+  }
+  .login-remember input{ accent-color: var(--accent); width:14px; height:14px; cursor:pointer; }
   .login-btn{
     width:100%;
     background: linear-gradient(180deg, #1c62a8, #144a83);
@@ -432,6 +445,18 @@
   .balance-bar-fill.bindmak{ background: linear-gradient(90deg, var(--accent-dim), var(--accent)); }
   .balance-bar-fill.retail{ background: linear-gradient(90deg, #1f8f57, var(--green)); }
 
+  .low-balance-alert{
+    display:none;
+    margin-top: 8px;
+    background: rgba(255,180,84,.1);
+    border: 1px solid rgba(255,180,84,.4);
+    border-radius: 7px;
+    padding: 8px 10px;
+    font-family:'JetBrains Mono', monospace; font-size:10.5px;
+    color: var(--amber); line-height:1.5;
+  }
+  .low-balance-alert.show{ display:block; }
+
   .redeem-box{
     display:none; flex-direction:column; gap:8px;
     margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line-soft);
@@ -462,6 +487,11 @@
       <input type="password" id="loginPassword" autocomplete="current-password" placeholder="••••••••">
     </div>
 
+    <label class="login-remember">
+      <input type="checkbox" id="rememberMe">
+      Remember me on this device
+    </label>
+
     <button class="login-btn" id="loginBtn">LOGIN</button>
     <div class="login-status" id="loginStatus"></div>
 
@@ -472,6 +502,30 @@
         Message admin on Telegram
       </a>
     </div>
+  </div>
+</div>
+
+<!-- CHANGE PASSWORD OVERLAY -->
+<div class="login-overlay" id="changePasswordOverlay" style="display:none;">
+  <div class="login-card">
+    <div class="login-sub" style="margin-bottom:22px;">CHANGE PASSWORD</div>
+
+    <div class="login-field">
+      <label>Current Password</label>
+      <input type="password" id="cpCurrent" autocomplete="current-password" placeholder="••••••••">
+    </div>
+    <div class="login-field">
+      <label>New Password</label>
+      <input type="password" id="cpNew" autocomplete="new-password" placeholder="••••••••">
+    </div>
+    <div class="login-field">
+      <label>Confirm New Password</label>
+      <input type="password" id="cpConfirm" autocomplete="new-password" placeholder="••••••••">
+    </div>
+
+    <button class="login-btn" id="cpSubmitBtn">UPDATE PASSWORD</button>
+    <div class="login-status" id="cpStatus"></div>
+    <button class="redeem-btn" id="cpCancelBtn" style="width:100%; margin-top:10px;">Cancel</button>
   </div>
 </div>
 
@@ -487,6 +541,7 @@
       <div class="version-chip">v1.0.1</div>
     </div>
     <div style="display:flex; align-items:center; gap:14px;">
+      <span class="logout-link" id="changePasswordLink">change password</span>
       <span class="logout-link" id="logoutLink">log out (<span id="loggedInAs"></span>)</span>
       <div class="status-pill live" id="statusPill">
         <span class="led"></span><span id="statusText">READY</span>
@@ -514,6 +569,8 @@
           <span class="balance-value" id="balRetail">—</span>
         </div>
         <div class="balance-bar-track"><div class="balance-bar-fill retail" id="balRetailBar"></div></div>
+
+        <div class="low-balance-alert" id="lowBalanceAlert"></div>
 
         <div class="redeem-box" id="redeemBox">
           <input type="text" id="redeemInput" class="cloud-input" placeholder="xxxxx-xxxxx-xxxxx-xxxxx-xxxxx" spellcheck="false">
@@ -552,6 +609,7 @@
           <option>10</option>
           <option>25</option>
         </select>
+        <div class="stock-warning" id="stockWarning"></div>
       </div>
 
       <div class="field">
@@ -718,30 +776,44 @@ function extractionBlocked(user){
 
 let currentUser = null;
 
+// Bump this whenever you deploy a new version of this file. Any "remembered" login
+// tied to an older build ID is treated as stale and forces a fresh login — this is
+// what makes remember-me survive normal reloads but NOT survive you updating the app.
+const APP_BUILD_ID = '2026-07-08.1';
+
 // Fallback so the demo still works before the Users tab / sharing is set up.
 let users = [
   { name: 'Demo User', email: 'demo@msvse.local', password: 'demo1234', joined: '2026-01-01', plan: 'Starter' }
 ];
 
-// Minimal storage abstraction — uses the artifact's persistent storage API when available
-// (window.storage), otherwise keeps "remember me" in memory only for this page load.
-// If you're hosting this file outside Claude (e.g. on your own server), you can swap
-// rememberStore.set/get to use localStorage directly for real cross-session persistence.
+// Storage abstraction with three tiers: window.storage (only exists inside Claude's own
+// artifact preview) -> localStorage (what actually persists on your real GitHub Pages
+// deployment, which is where this file runs day to day) -> in-memory (last-resort fallback
+// if a browser blocks storage entirely, e.g. strict private-browsing mode).
 const rememberStore = {
   async set(key, value){
     if(window.storage){ try{ await window.storage.set(key, value, false); return; }catch(e){} }
+    try{ localStorage.setItem('msvse_' + key, JSON.stringify(value)); return; }catch(e){}
     this._mem = this._mem || {};
     this._mem[key] = value;
   },
   async get(key){
     if(window.storage){
-      try{ const r = await window.storage.get(key, false); return r ? r.value : null; }catch(e){ return null; }
+      try{
+        const r = await window.storage.get(key, false);
+        if(r && r.value !== undefined) return r.value;
+      }catch(e){}
     }
+    try{
+      const raw = localStorage.getItem('msvse_' + key);
+      if(raw !== null) return JSON.parse(raw);
+    }catch(e){}
     this._mem = this._mem || {};
     return this._mem[key] || null;
   },
   async del(key){
-    if(window.storage){ try{ await window.storage.delete(key, false); return; }catch(e){} }
+    if(window.storage){ try{ await window.storage.delete(key, false); }catch(e){} }
+    try{ localStorage.removeItem('msvse_' + key); }catch(e){}
     this._mem = this._mem || {};
     delete this._mem[key];
   }
@@ -806,6 +878,7 @@ const loginOverlay = document.getElementById('loginOverlay');
 const mainApp = document.getElementById('mainApp');
 const loginEmail = document.getElementById('loginEmail');
 const loginPassword = document.getElementById('loginPassword');
+const rememberMe = document.getElementById('rememberMe');
 const loginBtn = document.getElementById('loginBtn');
 const loginStatus = document.getElementById('loginStatus');
 const loginError = document.getElementById('loginError');
@@ -847,6 +920,11 @@ async function handleLoginClick(){
 
   if(user){
     loginStatus.textContent = '';
+    if(rememberMe.checked){
+      await rememberStore.set('msvse_session', { email: user.email, build: APP_BUILD_ID });
+    } else {
+      await rememberStore.del('msvse_session');
+    }
     showApp(user);
   } else {
     loginStatus.textContent = '';
@@ -859,11 +937,88 @@ loginPassword.addEventListener('keydown', e => { if(e.key === 'Enter') handleLog
 loginEmail.addEventListener('keydown', e => { if(e.key === 'Enter') loginPassword.focus(); });
 
 logoutLink.addEventListener('click', async () => {
+  await rememberStore.del('msvse_session');
   loginPassword.value = '';
   loginError.classList.remove('show');
   mainApp.style.display = 'none';
   loginOverlay.style.display = 'flex';
 });
+
+// ---------- Change password ----------
+const changePasswordLink = document.getElementById('changePasswordLink');
+const changePasswordOverlay = document.getElementById('changePasswordOverlay');
+const cpCurrent = document.getElementById('cpCurrent');
+const cpNew = document.getElementById('cpNew');
+const cpConfirm = document.getElementById('cpConfirm');
+const cpSubmitBtn = document.getElementById('cpSubmitBtn');
+const cpStatus = document.getElementById('cpStatus');
+const cpCancelBtn = document.getElementById('cpCancelBtn');
+
+function closeChangePassword(){
+  changePasswordOverlay.style.display = 'none';
+  cpCurrent.value = ''; cpNew.value = ''; cpConfirm.value = '';
+  cpStatus.textContent = ''; cpStatus.className = 'login-status';
+}
+
+changePasswordLink.addEventListener('click', () => {
+  changePasswordOverlay.style.display = 'flex';
+  cpCurrent.focus();
+});
+cpCancelBtn.addEventListener('click', closeChangePassword);
+
+async function handleChangePassword(){
+  const current = cpCurrent.value;
+  const next = cpNew.value;
+  const confirm = cpConfirm.value;
+
+  if(!current || !next || !confirm){
+    cpStatus.textContent = 'Fill in all three fields';
+    cpStatus.className = 'login-status';
+    return;
+  }
+  if(next !== confirm){
+    cpStatus.textContent = "New password and confirmation don't match";
+    cpStatus.className = 'login-status';
+    return;
+  }
+  if(next.length < 4){
+    cpStatus.textContent = 'New password is too short';
+    cpStatus.className = 'login-status';
+    return;
+  }
+
+  cpSubmitBtn.disabled = true;
+  cpStatus.textContent = 'Updating…';
+  cpStatus.className = 'login-status busy';
+
+  const result = await callBackend({
+    action: 'changePassword',
+    email: currentUser.email,
+    currentPassword: current,
+    newPassword: next
+  });
+
+  cpSubmitBtn.disabled = false;
+
+  if(!result.success){
+    cpStatus.textContent = result.error === 'Write backend not configured'
+      ? 'Password backend not connected yet'
+      : (result.error || 'Could not update password');
+    cpStatus.className = 'login-status';
+    return;
+  }
+
+  // Keep the in-memory user list consistent for the rest of this session
+  const u = users.find(x => x.email === currentUser.email);
+  if(u) u.password = next;
+
+  cpStatus.textContent = 'Password updated';
+  cpStatus.className = 'login-status';
+  setTimeout(closeChangePassword, 1200);
+}
+
+cpSubmitBtn.addEventListener('click', handleChangePassword);
+cpConfirm.addEventListener('keydown', e => { if(e.key === 'Enter') handleChangePassword(); });
 
 // ---------- Daily balance + redeem codes ----------
 function todayStr(){ return new Date().toISOString().slice(0,10); }
@@ -897,6 +1052,7 @@ const balBindMak = document.getElementById('balBindMak');
 const balRetail = document.getElementById('balRetail');
 const balBindMakBar = document.getElementById('balBindMakBar');
 const balRetailBar = document.getElementById('balRetailBar');
+const lowBalanceAlert = document.getElementById('lowBalanceAlert');
 
 function renderBalance(bal, user){
   const plan = planFor(user.plan);
@@ -910,6 +1066,23 @@ function renderBalance(bal, user){
   balRetail.className = 'balance-value' + (bal.retail <= 0 || blocked ? ' zero' : '');
   balBindMakBar.style.width = (blocked ? 0 : Math.min(100, (bal.bindMak / plan.bindMak) * 100)) + '%';
   balRetailBar.style.width = (blocked ? 0 : Math.min(100, (bal.retail / plan.retail) * 100)) + '%';
+
+  if(blocked){
+    lowBalanceAlert.classList.remove('show');
+    return;
+  }
+
+  const lowBindMak = plan.bindMak > 0 && bal.bindMak <= plan.bindMak * 0.1;
+  const lowRetail = plan.retail > 0 && bal.retail <= plan.retail * 0.1;
+  if(lowBindMak || lowRetail){
+    const parts = [];
+    if(lowBindMak) parts.push('Bind/MAK');
+    if(lowRetail) parts.push('Retail');
+    lowBalanceAlert.textContent = `⚠ ${parts.join(' and ')} balance is at or below 10% of your daily limit. Redeem a code to top up.`;
+    lowBalanceAlert.classList.add('show');
+  } else {
+    lowBalanceAlert.classList.remove('show');
+  }
 }
 
 async function initBalancePanel(){
@@ -972,6 +1145,16 @@ redeemInput.addEventListener('keydown', e => { if(e.key === 'Enter') handleRedee
 
 (async function initAuth(){
   await loadUsers();
+  const remembered = await rememberStore.get('msvse_session');
+  if(remembered && remembered.build === APP_BUILD_ID && remembered.email){
+    const stillValid = users.find(u => u.email === remembered.email);
+    if(stillValid){
+      showApp(stillValid);
+      return;
+    }
+  } else if(remembered){
+    await rememberStore.del('msvse_session'); // stale build — force fresh login
+  }
   loginOverlay.style.display = 'flex';
   mainApp.style.display = 'none';
 })();
@@ -1150,10 +1333,12 @@ function refreshTypeOptions(){
     typeSel.appendChild(opt);
   });
   if(types.includes(prevType)) typeSel.value = prevType;
+  checkStockAvailability();
 }
 
 categorySel.addEventListener('change', refreshProductOptions);
 productSel.addEventListener('change', refreshTypeOptions);
+typeSel.addEventListener('change', checkStockAvailability);
 
 const poolText = document.getElementById('poolText');
 poolText.value = DEFAULT_POOL;
@@ -1328,6 +1513,30 @@ const resultsBox = document.getElementById('results');
 const resultsLabel = document.getElementById('resultsLabel');
 const keyList = document.getElementById('keyList');
 const exportBtn = document.getElementById('exportBtn');
+const stockWarning = document.getElementById('stockWarning');
+let isExtracting = false;
+
+// Hard preflight block: can't submit a quantity higher than what's actually in stock
+// for the selected product/type. Runs on every dropdown/qty change and after every sync.
+function checkStockAvailability(){
+  const category = categorySel.value;
+  const product = productSel.value;
+  const type = typeSel.value;
+  const qty = parseInt(qtySel.value, 10);
+  if(!product){ stockWarning.classList.remove('show'); return; }
+
+  const available = pool.filter(r => r.category === category && r.product === product && r.type === type).length;
+
+  if(qty > available){
+    stockWarning.textContent = `Only ${available} in stock for this selection — lower the quantity to extract.`;
+    stockWarning.classList.add('show');
+    runBtn.disabled = true;
+  } else {
+    stockWarning.classList.remove('show');
+    if(!isExtracting) runBtn.disabled = false;
+  }
+}
+qtySel.addEventListener('change', checkStockAvailability);
 
 let lastExtracted = [];
 let lastExportType = 'txt';
@@ -1357,7 +1566,24 @@ function setProgress(pct, stage){
 
 runBtn.addEventListener('click', runExtraction);
 
+function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+
+const PROCESSING_FLAVOR_LINES = [
+  'Awaiting license server response...',
+  'Queue position updated',
+  'Re-validating session token...',
+  'Server load elevated — throttling request',
+  'Refreshing handshake with license pool...',
+  'Batch verification in progress...',
+  'Waiting on rate-limiter window...',
+  'Cross-checking against distribution ledger...',
+  'Reconciling stock counts...',
+  'Holding for upstream confirmation...',
+];
+
 async function runExtraction(){
+  if(isExtracting) return;
+
   const category = categorySel.value;
   const product = productSel.value;
   const type = typeSel.value;
@@ -1380,10 +1606,19 @@ async function runExtraction(){
     return;
   }
 
+  // Defensive re-check — the Run button should already be disabled by checkStockAvailability
+  // if this is over stock, but the pool can change between then and a click landing.
+  const preStock = pool.filter(r => r.category === category && r.product === product && r.type === type).length;
+  if(qty > preStock){
+    checkStockAvailability();
+    return;
+  }
+
   const bucket = bucketForType(type);
   const bucketLabel = bucket === 'retail' ? 'Retail' : 'Bind/MAK';
   const bal = await getBalance(currentUser);
 
+  isExtracting = true;
   runBtn.disabled = true;
   resultsBox.classList.remove('show');
   keyList.innerHTML = '';
@@ -1395,80 +1630,96 @@ async function runExtraction(){
   statusText.textContent = 'PROCESSING';
   setProgress(0, 'initializing');
 
-  if(bal[bucket] <= 0){
-    await addLine(`<span class="tag">[${stamp()}]</span> Opening session <span class="info">${reqId}</span>`, 120);
-    setProgress(20, 'checking quota');
-    await addLine(`<span class="tag">[${stamp()}]</span> <span class="warn">Daily ${bucketLabel} limit reached (0 remaining). Redeem a code or try again tomorrow.</span>`, 320);
-    setProgress(100, 'blocked');
+  try{
+    if(bal[bucket] <= 0){
+      await addLine(`<span class="tag">[${stamp()}]</span> Opening session <span class="info">${reqId}</span>`, 120);
+      setProgress(20, 'checking quota');
+      await addLine(`<span class="tag">[${stamp()}]</span> <span class="warn">Daily ${bucketLabel} limit reached (0 remaining). Redeem a code or try again tomorrow.</span>`, 320);
+      setProgress(100, 'blocked');
+      lastExtracted = [];
+      renderResults([], product, type, false, true);
+      return;
+    }
+
+    const initialSteps = [
+      { html: `<span class="tag">[${stamp()}]</span> Opening session <span class="info">${reqId}</span>`, pct: 6, stage: 'session init', delay: 150 },
+      { html: `<span class="tag">[${stamp()}]</span> Category: <span class="info">${category}</span> · Target: <span class="info">${product}</span>`, pct: 12, stage: 'resolving product', delay: 300 },
+      { html: `<span class="tag">[${stamp()}]</span> Key class: <span class="info">${type}</span> · qty: <span class="info">${qty}</span>`, pct: 16, stage: 'validating parameters', delay: 300 },
+      { html: `<span class="tag">[${stamp()}]</span> Daily balance: <span class="info">${bal[bucket]} ${bucketLabel}</span> remaining`, pct: 20, stage: 'checking quota', delay: 260 },
+      { html: `<span class="tag">[${stamp()}]</span> Request queued for fulfillment...`, pct: 24, stage: 'queued', delay: 300 },
+    ];
+    for(const s of initialSteps){
+      await addLine(s.html, s.delay);
+      setProgress(s.pct, s.stage);
+    }
+
+    // Realistic processing window — randomized 2 to 15 minutes, with periodic
+    // progress ticks and flavor log lines so it doesn't look stalled.
+    const totalMs = Math.floor(Math.random() * (900000 - 120000 + 1)) + 120000;
+    const phaseStart = Date.now();
+    const startPct = 26, endPct = 86;
+    while(true){
+      const elapsed = Date.now() - phaseStart;
+      if(elapsed >= totalMs) break;
+      const frac = elapsed / totalMs;
+      setProgress(Math.min(endPct, Math.round(startPct + frac * (endPct - startPct))), 'processing');
+      if(Math.random() < 0.35){
+        const line = PROCESSING_FLAVOR_LINES[Math.floor(Math.random() * PROCESSING_FLAVOR_LINES.length)];
+        await addLine(`<span class="tag">[${stamp()}]</span> ${line}`, 0);
+      }
+      const tick = 3000 + Math.random() * 4000;
+      await sleep(Math.min(tick, totalMs - elapsed));
+    }
+    setProgress(endPct, 'processing');
+
+    // Re-check live stock and balance now that real time has passed — either could
+    // have shifted (another session, an admin edit, auto-sync) during the wait.
+    const freshBal = await getBalance(currentUser);
+    const effectiveQty = Math.min(qty, freshBal[bucket]);
+    const matches = pool.filter(r => r.category === category && r.product === product && r.type === type);
+    const available = matches.length;
+    const willGive = matches.slice(0, effectiveQty);
+
+    await addLine(`<span class="tag">[${stamp()}]</span> Found <span class="${available ? 'ok' : 'warn'}">${available}</span> matching record(s)`, 280);
+    setProgress(90, 'filtering');
+
+    if(effectiveQty < qty){
+      const reason = effectiveQty < available ? 'daily quota' : 'stock';
+      await addLine(`<span class="tag">[${stamp()}]</span> <span class="warn">Only ${willGive.length} of ${qty} requested available (${reason} limit)</span>`, 260);
+    }
+
+    await addLine(`<span class="tag">[${stamp()}]</span> Decrypting key block...`, 300);
+    setProgress(94, 'decrypting');
+    await addLine(`<span class="tag">[${stamp()}]</span> Verifying checksum integrity...`, 300);
+    setProgress(98, 'verifying');
+    await addLine(`<span class="tag">[${stamp()}]</span> <span class="ok">Verification passed</span>`, 260);
+    setProgress(100, 'complete');
+    await addLine(`<span class="tag">[${stamp()}]</span> <span class="ok">Extraction complete — ${willGive.length} key(s) returned</span>`, 220);
+
+    if(willGive.length > 0){
+      await deductBalance(currentUser, bucket, willGive.length);
+
+      // Remove immediately from the local pool so the same key can't be handed out again
+      // this session even before the next auto-sync reconciles with the sheet.
+      const extractedKeys = new Set(willGive.map(r => r.key));
+      pool = pool.filter(r => !(r.category === category && r.product === product && r.type === type && extractedKeys.has(r.key)));
+
+      // Clear each extracted key from the actual Google Sheet via the write backend.
+      const header = `${product} | ${type}`;
+      Promise.allSettled(
+        willGive.map(r => callBackend({ action: 'deleteKey', category, header, key: r.key }))
+      );
+    }
+
+    lastExtracted = willGive;
+    renderResults(willGive, product, type, available < qty || effectiveQty < qty);
+  } finally {
+    isExtracting = false;
     statusPill.classList.remove('busy');
     statusPill.classList.add('live');
     statusText.textContent = 'READY';
-    runBtn.disabled = false;
-    lastExtracted = [];
-    renderResults([], product, type, false, true);
-    return;
+    checkStockAvailability();
   }
-
-  const effectiveQty = Math.min(qty, bal[bucket]);
-
-  const steps = [
-    { html: `<span class="tag">[${stamp()}]</span> Opening session <span class="info">${reqId}</span>`, pct: 8, stage: 'session init', delay: 120 },
-    { html: `<span class="tag">[${stamp()}]</span> Category: <span class="info">${category}</span> · Target: <span class="info">${product}</span>`, pct: 18, stage: 'resolving product', delay: 260 },
-    { html: `<span class="tag">[${stamp()}]</span> Key class: <span class="info">${type}</span> · qty: <span class="info">${qty}</span>`, pct: 26, stage: 'validating parameters', delay: 260 },
-    { html: `<span class="tag">[${stamp()}]</span> Daily balance: <span class="info">${bal[bucket]} ${bucketLabel}</span> remaining`, pct: 32, stage: 'checking quota', delay: 240 },
-    { html: `<span class="tag">[${stamp()}]</span> Connecting to license pool...`, pct: 40, stage: 'connecting', delay: 320 },
-    { html: `<span class="tag">[${stamp()}]</span> <span class="ok">Connection established</span>`, pct: 48, stage: 'connected', delay: 260 },
-    { html: `<span class="tag">[${stamp()}]</span> Scanning inventory for matching entries...`, pct: 58, stage: 'scanning', delay: 340 },
-  ];
-
-  for(const s of steps){
-    await addLine(s.html, s.delay);
-    setProgress(s.pct, s.stage);
-  }
-
-  const matches = pool.filter(r => r.category === category && r.product === product && r.type === type);
-  const available = matches.length;
-  const willGive = matches.slice(0, effectiveQty);
-  const shortfall = qty - willGive.length;
-
-  await addLine(`<span class="tag">[${stamp()}]</span> Found <span class="${available ? 'ok' : 'warn'}">${available}</span> matching record(s)`, 340);
-  setProgress(70, 'filtering');
-
-  if(effectiveQty < qty){
-    const reason = effectiveQty < available ? 'daily quota' : 'stock';
-    await addLine(`<span class="tag">[${stamp()}]</span> <span class="warn">Only ${willGive.length} of ${qty} requested available (${reason} limit)</span>`, 260);
-  }
-
-  await addLine(`<span class="tag">[${stamp()}]</span> Decrypting key block...`, 300);
-  setProgress(84, 'decrypting');
-  await addLine(`<span class="tag">[${stamp()}]</span> Verifying checksum integrity...`, 300);
-  setProgress(93, 'verifying');
-  await addLine(`<span class="tag">[${stamp()}]</span> <span class="ok">Verification passed</span>`, 260);
-  setProgress(100, 'complete');
-  await addLine(`<span class="tag">[${stamp()}]</span> <span class="ok">Extraction complete — ${willGive.length} key(s) returned</span>`, 220);
-
-  statusPill.classList.remove('busy');
-  statusPill.classList.add('live');
-  statusText.textContent = 'READY';
-  runBtn.disabled = false;
-
-  if(willGive.length > 0){
-    await deductBalance(currentUser, bucket, willGive.length);
-
-    // Remove immediately from the local pool so the same key can't be handed out again
-    // this session even before the next auto-sync reconciles with the sheet.
-    const extractedKeys = new Set(willGive.map(r => r.key));
-    pool = pool.filter(r => !(r.category === category && r.product === product && r.type === type && extractedKeys.has(r.key)));
-
-    // Clear each extracted key from the actual Google Sheet via the write backend.
-    const header = `${product} | ${type}`;
-    Promise.allSettled(
-      willGive.map(r => callBackend({ action: 'deleteKey', category, header, key: r.key }))
-    );
-  }
-
-  lastExtracted = willGive;
-  renderResults(willGive, product, type, available < qty || effectiveQty < qty);
 }
 
 function stamp(){
