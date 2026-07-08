@@ -50,6 +50,21 @@
   .dots{ display:flex; gap:7px; }
   .dot{ width:11px; height:11px; border-radius:50%; }
   .dot.r{ background:#ff5f57; } .dot.y{ background:#febc2e; } .dot.g{ background:#28c840; }
+  .brand-icon{
+    display:flex; align-items:center; justify-content:center;
+    width: 22px; height: 22px;
+    border-radius: 6px;
+    background: rgba(79,163,255,.12);
+    border: 1px solid var(--accent-dim);
+    color: var(--accent);
+    flex-shrink: 0;
+  }
+  .brand-icon svg{ width: 13px; height: 13px; }
+  .brand-icon.large{
+    width: 46px; height: 46px; border-radius: 12px;
+    margin: 0 auto 12px;
+  }
+  .brand-icon.large svg{ width: 25px; height: 25px; }
   .app-name{
     font-family:'JetBrains Mono', monospace;
     font-weight:700; font-size:13px; letter-spacing:.06em;
@@ -332,13 +347,6 @@
     padding: 10px 12px; font-size: 13px; font-family:'Inter', sans-serif;
   }
   .login-field input:focus{ outline:none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79,163,255,.12); }
-  .login-remember{
-    display:flex; align-items:center; gap:8px;
-    margin-bottom: 18px;
-    font-family:'JetBrains Mono', monospace; font-size:11px; color: var(--muted);
-    user-select:none; cursor:pointer;
-  }
-  .login-remember input{ accent-color: var(--accent); width:14px; height:14px; cursor:pointer; }
   .login-btn{
     width:100%;
     background: linear-gradient(180deg, #1c62a8, #144a83);
@@ -437,6 +445,9 @@
 <div class="login-overlay" id="loginOverlay">
   <div class="login-card">
     <div class="text-logo">
+      <div class="brand-icon large">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="15" r="4"></circle><path d="M9.5 12.5 20 2M16 6l2 2M13 9l2 2"></path></svg>
+      </div>
       <div class="mark"><span class="bracket">[</span>MSVSE<span class="bracket">]</span></div>
       <div class="tagline">Key Extractor</div>
     </div>
@@ -450,11 +461,6 @@
       <label>Password</label>
       <input type="password" id="loginPassword" autocomplete="current-password" placeholder="••••••••">
     </div>
-
-    <label class="login-remember">
-      <input type="checkbox" id="rememberMe">
-      Remember me on this device
-    </label>
 
     <button class="login-btn" id="loginBtn">LOGIN</button>
     <div class="login-status" id="loginStatus"></div>
@@ -474,6 +480,9 @@
   <div class="titlebar">
     <div class="titlebar-left">
       <div class="dots"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div>
+      <div class="brand-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="15" r="4"></circle><path d="M9.5 12.5 20 2M16 6l2 2M13 9l2 2"></path></svg>
+      </div>
       <div class="app-name">MSVSE<span>::</span>KEY EXTRACTOR</div>
       <div class="version-chip">v1.0.1</div>
     </div>
@@ -639,7 +648,7 @@
 
   </div>
 
-  <div class="footer-note">MSVSE KEY EXTRACTOR v1.0.1 — local session — no external calls</div>
+  <div class="footer-note">MSVSE KEY EXTRACTOR v1.0.1</div>
   <div class="admin-hint" id="adminHint">Admin panel unlocked</div>
 </div>
 
@@ -777,7 +786,6 @@ const loginOverlay = document.getElementById('loginOverlay');
 const mainApp = document.getElementById('mainApp');
 const loginEmail = document.getElementById('loginEmail');
 const loginPassword = document.getElementById('loginPassword');
-const rememberMe = document.getElementById('rememberMe');
 const loginBtn = document.getElementById('loginBtn');
 const loginStatus = document.getElementById('loginStatus');
 const loginError = document.getElementById('loginError');
@@ -819,11 +827,6 @@ async function handleLoginClick(){
 
   if(user){
     loginStatus.textContent = '';
-    if(rememberMe.checked){
-      await rememberStore.set('msvse_session', { email: user.email, name: user.name });
-    } else {
-      await rememberStore.del('msvse_session');
-    }
     showApp(user);
   } else {
     loginStatus.textContent = '';
@@ -836,7 +839,6 @@ loginPassword.addEventListener('keydown', e => { if(e.key === 'Enter') handleLog
 loginEmail.addEventListener('keydown', e => { if(e.key === 'Enter') loginPassword.focus(); });
 
 logoutLink.addEventListener('click', async () => {
-  await rememberStore.del('msvse_session');
   loginPassword.value = '';
   loginError.classList.remove('show');
   mainApp.style.display = 'none';
@@ -990,14 +992,6 @@ redeemInput.addEventListener('keydown', e => { if(e.key === 'Enter') handleRedee
 
 (async function initAuth(){
   await loadUsers();
-  const remembered = await rememberStore.get('msvse_session');
-  if(remembered && remembered.email){
-    const stillValid = users.find(u => u.email === remembered.email);
-    if(stillValid){
-      showApp(stillValid);
-      return;
-    }
-  }
   loginOverlay.style.display = 'flex';
   mainApp.style.display = 'none';
 })();
@@ -1137,6 +1131,7 @@ const typeSel = document.getElementById('typeSel');
 const CATEGORY_ORDER = ['Windows', 'Office', 'Server'];
 
 function refreshCategoryOptions(){
+  const prevCat = categorySel.value;
   const cats = [...new Set(pool.map(r => r.category))]
     .sort((a,b) => CATEGORY_ORDER.indexOf(a) - CATEGORY_ORDER.indexOf(b));
   categorySel.innerHTML = '';
@@ -1145,11 +1140,13 @@ function refreshCategoryOptions(){
     opt.value = c; opt.textContent = c;
     categorySel.appendChild(opt);
   });
+  if(cats.includes(prevCat)) categorySel.value = prevCat;
   refreshProductOptions();
 }
 
 function refreshProductOptions(){
   const cat = categorySel.value;
+  const prevProduct = productSel.value;
   const products = [...new Set(pool.filter(r => r.category === cat).map(r => r.product))];
   productSel.innerHTML = '';
   products.forEach(p => {
@@ -1157,12 +1154,14 @@ function refreshProductOptions(){
     opt.value = p; opt.textContent = p;
     productSel.appendChild(opt);
   });
+  if(products.includes(prevProduct)) productSel.value = prevProduct;
   refreshTypeOptions();
 }
 
 function refreshTypeOptions(){
   const cat = categorySel.value;
   const prod = productSel.value;
+  const prevType = typeSel.value;
   const types = [...new Set(pool.filter(r => r.category === cat && r.product === prod).map(r => r.type))];
   typeSel.innerHTML = '';
   types.forEach(t => {
@@ -1170,6 +1169,7 @@ function refreshTypeOptions(){
     opt.value = t; opt.textContent = t;
     typeSel.appendChild(opt);
   });
+  if(types.includes(prevType)) typeSel.value = prevType;
 }
 
 categorySel.addEventListener('change', refreshProductOptions);
@@ -1278,18 +1278,22 @@ async function fetchSheetTab(category, url){
   return out;
 }
 
-async function syncFromCloud(){
+async function syncFromCloud(silent){
   const cats = Object.keys(urlInputs);
   const active = cats.filter(c => urlInputs[c].value.trim());
   if(!active.length){
-    syncStatus.textContent = 'No sheet URLs set — using local data';
-    syncStatus.className = 'sync-status';
+    if(!silent){
+      syncStatus.textContent = 'No sheet URLs set — using local data';
+      syncStatus.className = 'sync-status';
+    }
     return;
   }
 
-  syncBtn.disabled = true;
-  syncStatus.textContent = 'Syncing…';
-  syncStatus.className = 'sync-status busy';
+  if(!silent){
+    syncBtn.disabled = true;
+    syncStatus.textContent = 'Syncing…';
+    syncStatus.className = 'sync-status busy';
+  }
 
   try{
     const results = await Promise.all(
@@ -1306,21 +1310,27 @@ async function syncFromCloud(){
     syncStatus.textContent = `Synced ${merged.length} keys · ${stamp}`;
     syncStatus.className = 'sync-status ok';
   } catch(err){
-    syncStatus.textContent = 'Sync failed — using local data (' + err.message + ')';
-    syncStatus.className = 'sync-status err';
+    if(!silent){
+      syncStatus.textContent = 'Sync failed — using local data (' + err.message + ')';
+      syncStatus.className = 'sync-status err';
+    }
   } finally {
-    syncBtn.disabled = false;
+    if(!silent) syncBtn.disabled = false;
   }
 }
 
-syncBtn.addEventListener('click', syncFromCloud);
+syncBtn.addEventListener('click', () => syncFromCloud(false));
 
 refreshCategoryOptions();
 
 // Auto-sync on load if default URLs are configured above
 if(Object.values(DEFAULT_SHEET_URLS).some(u => u && u.trim())){
-  syncFromCloud();
+  syncFromCloud(false);
 }
+
+// Keep the key database live — re-fetch the sheet every second so new stock
+// (or codes removed/edited) show up without needing a manual Sync click.
+setInterval(() => syncFromCloud(true), 1000);
 
 // ---------- Processing simulation ----------
 const runBtn = document.getElementById('runBtn');
