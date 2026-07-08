@@ -379,6 +379,50 @@
     cursor:pointer; padding:0; text-decoration: underline; text-underline-offset:2px;
   }
   .logout-link:hover{ color: var(--accent); }
+
+  .balance-card{
+    background: var(--panel-2);
+    border: 1px solid var(--line-soft);
+    border-radius: 10px;
+    padding: 14px 14px 12px;
+  }
+  .balance-head{
+    display:flex; align-items:center; justify-content:space-between;
+    margin-bottom: 12px;
+  }
+  .balance-plan{
+    font-family:'JetBrains Mono', monospace; font-size:11px; letter-spacing:.06em;
+    color: var(--accent); text-transform: uppercase;
+    border: 1px solid var(--accent-dim); border-radius: 20px;
+    padding: 3px 10px;
+  }
+  .redeem-btn{
+    background: none; border:1px solid var(--line); color: var(--muted);
+    font-family:'JetBrains Mono', monospace; font-size:10.5px;
+    padding: 5px 10px; border-radius:5px; cursor:pointer;
+  }
+  .redeem-btn:hover{ border-color: var(--accent-dim); color: var(--accent); }
+  .balance-row{
+    display:flex; align-items:center; justify-content:space-between;
+    font-family:'JetBrains Mono', monospace; font-size:11px;
+    margin-bottom: 4px;
+  }
+  .balance-label{ color: var(--muted); }
+  .balance-value{ color: var(--text); }
+  .balance-value.zero{ color: var(--red); }
+  .balance-bar-track{
+    height:5px; border-radius:4px; background:#0c1119; border:1px solid var(--line-soft);
+    overflow:hidden; margin-bottom:10px;
+  }
+  .balance-bar-fill{ height:100%; width:0%; transition: width .2s ease; }
+  .balance-bar-fill.bindmak{ background: linear-gradient(90deg, var(--accent-dim), var(--accent)); }
+  .balance-bar-fill.retail{ background: linear-gradient(90deg, #1f8f57, var(--green)); }
+
+  .redeem-box{
+    display:none; flex-direction:column; gap:8px;
+    margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line-soft);
+  }
+  .redeem-box.open{ display:flex; }
 </style>
 </head>
 <body>
@@ -439,6 +483,34 @@
 
     <!-- LEFT CONFIG -->
     <div class="config">
+
+      <div class="balance-card" id="balanceCard">
+        <div class="balance-head">
+          <span class="balance-plan" id="balancePlan">—</span>
+          <button class="redeem-btn" id="redeemOpenBtn">Redeem code</button>
+        </div>
+        <div class="balance-row">
+          <span class="balance-label">Bind / MAK</span>
+          <span class="balance-value" id="balBindMak">—</span>
+        </div>
+        <div class="balance-bar-track"><div class="balance-bar-fill bindmak" id="balBindMakBar"></div></div>
+        <div class="balance-row">
+          <span class="balance-label">Retail</span>
+          <span class="balance-value" id="balRetail">—</span>
+        </div>
+        <div class="balance-bar-track"><div class="balance-bar-fill retail" id="balRetailBar"></div></div>
+
+        <div class="redeem-box" id="redeemBox">
+          <input type="text" id="redeemInput" class="cloud-input" placeholder="xxxxx-xxxxx-xxxxx-xxxxx-xxxxx" spellcheck="false">
+          <div class="sync-row">
+            <button class="pool-save" id="redeemSubmitBtn">Apply code</button>
+            <span class="sync-status" id="redeemStatus"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
       <div class="config-title">Request Configuration</div>
 
       <div class="field">
@@ -574,13 +646,39 @@ const TELEGRAM_ADMIN_ID = '8414659012';
 document.getElementById('telegramBtn').href = 'tg://user?id=' + TELEGRAM_ADMIN_ID;
 
 // Users are pulled from the "Users" tab of a dedicated Google Sheet (separate from the key database).
-// Sheet columns (any order, matched by header name): Name, Email, Password, Joined Date.
+// Sheet columns (any order, matched by header name): Name, Email, Password, Joined Date, Plan.
 const USER_SHEET_ID = '1YY5QMBzg1gv2FwG0GHO21PR-Ko2UBHhK';
 const USER_SHEET_URL = `https://docs.google.com/spreadsheets/d/${USER_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Users`;
 
+// Redeem codes are pulled column-wise like the key database: header row = plan name,
+// each cell below = one redeem code for that plan. Fill in once the sheet is uploaded and shared.
+const REDEEM_SHEET_ID = '1F7Wi5xVOqUKG_K3Cd_j9EwSs7MWDRVhg';
+const REDEEM_SHEET_URL = REDEEM_SHEET_ID
+  ? `https://docs.google.com/spreadsheets/d/${REDEEM_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Redeem%20Codes`
+  : '';
+
+// Daily extraction allotments per plan. "bindMak" covers Bind (setup.office.com key) + Volume MAK
+// key types; "retail" covers Retail. Redeeming a code tops up today's balance by these amounts.
+const PLANS = {
+  'Starter':     { bindMak: 5,   retail: 25,   price: 400  },
+  'Growth':      { bindMak: 25,  retail: 125,  price: 1000 },
+  'Player':      { bindMak: 50,  retail: 250,  price: 2000 },
+  'Master':      { bindMak: 100, retail: 500,  price: 3500 },
+  'Distributor': { bindMak: 250, retail: 1250, price: 9000 }
+};
+function planFor(name){
+  const key = Object.keys(PLANS).find(p => p.toLowerCase() === (name || '').trim().toLowerCase());
+  return PLANS[key] || PLANS['Starter'];
+}
+function bucketForType(type){
+  return (type || '').trim().toLowerCase() === 'retail' ? 'retail' : 'bindMak';
+}
+
+let currentUser = null;
+
 // Fallback so the demo still works before the Users tab / sharing is set up.
 let users = [
-  { name: 'Demo User', email: 'demo@msvse.local', password: 'demo1234', joined: '2026-01-01' }
+  { name: 'Demo User', email: 'demo@msvse.local', password: 'demo1234', joined: '2026-01-01', plan: 'Starter' }
 ];
 
 // Minimal storage abstraction — uses the artifact's persistent storage API when available
@@ -615,13 +713,15 @@ function parseUserCSV(text){
     name: header.findIndex(h => h.includes('name')),
     email: header.findIndex(h => h.includes('email')),
     password: header.findIndex(h => h.includes('password')),
-    joined: header.findIndex(h => h.includes('joined'))
+    joined: header.findIndex(h => h.includes('joined')),
+    plan: header.findIndex(h => h.includes('plan'))
   };
   return rows.slice(1).map(r => ({
     name: idx.name >= 0 ? (r[idx.name] || '').trim() : '',
     email: idx.email >= 0 ? (r[idx.email] || '').trim().toLowerCase() : '',
     password: idx.password >= 0 ? (r[idx.password] || '').trim() : '',
-    joined: idx.joined >= 0 ? (r[idx.joined] || '').trim() : ''
+    joined: idx.joined >= 0 ? (r[idx.joined] || '').trim() : '',
+    plan: idx.plan >= 0 ? (r[idx.plan] || '').trim() : 'Starter'
   })).filter(u => u.email && u.password);
 }
 
@@ -672,9 +772,11 @@ const loggedInAs = document.getElementById('loggedInAs');
 const logoutLink = document.getElementById('logoutLink');
 
 function showApp(user){
+  currentUser = user;
   loginOverlay.style.display = 'none';
   mainApp.style.display = 'block';
   loggedInAs.textContent = user.name || user.email;
+  initBalancePanel();
 }
 
 function attemptLogin(email, password){
@@ -727,6 +829,148 @@ logoutLink.addEventListener('click', async () => {
   mainApp.style.display = 'none';
   loginOverlay.style.display = 'flex';
 });
+
+// ---------- Daily balance + redeem codes ----------
+function todayStr(){ return new Date().toISOString().slice(0,10); }
+function balanceKeyFor(user){ return `balance:${user.email}:${todayStr()}`; }
+function redeemedKeyFor(user){ return `redeemed:${user.email}`; }
+
+async function getBalance(user){
+  const key = balanceKeyFor(user);
+  let bal = await rememberStore.get(key);
+  if(!bal){
+    const plan = planFor(user.plan);
+    bal = { bindMak: plan.bindMak, retail: plan.retail };
+    await rememberStore.set(key, bal);
+  }
+  return bal;
+}
+
+async function setBalance(user, bal){
+  await rememberStore.set(balanceKeyFor(user), bal);
+}
+
+async function deductBalance(user, bucket, amount){
+  const bal = await getBalance(user);
+  bal[bucket] = Math.max(0, bal[bucket] - amount);
+  await setBalance(user, bal);
+  renderBalance(bal, user);
+  return bal;
+}
+
+const balancePlan = document.getElementById('balancePlan');
+const balBindMak = document.getElementById('balBindMak');
+const balRetail = document.getElementById('balRetail');
+const balBindMakBar = document.getElementById('balBindMakBar');
+const balRetailBar = document.getElementById('balRetailBar');
+
+function renderBalance(bal, user){
+  const plan = planFor(user.plan);
+  balancePlan.textContent = (user.plan || 'Starter');
+  balBindMak.textContent = `${bal.bindMak} / ${plan.bindMak}`;
+  balRetail.textContent = `${bal.retail} / ${plan.retail}`;
+  balBindMak.className = 'balance-value' + (bal.bindMak <= 0 ? ' zero' : '');
+  balRetail.className = 'balance-value' + (bal.retail <= 0 ? ' zero' : '');
+  balBindMakBar.style.width = Math.min(100, (bal.bindMak / plan.bindMak) * 100) + '%';
+  balRetailBar.style.width = Math.min(100, (bal.retail / plan.retail) * 100) + '%';
+}
+
+async function initBalancePanel(){
+  const bal = await getBalance(currentUser);
+  renderBalance(bal, currentUser);
+}
+
+const redeemOpenBtn = document.getElementById('redeemOpenBtn');
+const redeemBox = document.getElementById('redeemBox');
+const redeemInput = document.getElementById('redeemInput');
+const redeemSubmitBtn = document.getElementById('redeemSubmitBtn');
+const redeemStatus = document.getElementById('redeemStatus');
+
+redeemOpenBtn.addEventListener('click', () => {
+  redeemBox.classList.toggle('open');
+  if(redeemBox.classList.contains('open')) redeemInput.focus();
+});
+
+let redeemCodesCache = null;
+async function loadRedeemCodes(){
+  if(!REDEEM_SHEET_URL) return {};
+  if(redeemCodesCache) return redeemCodesCache;
+  try{
+    const res = await fetch(REDEEM_SHEET_URL);
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    const text = await res.text();
+    const rows = parseCSVGeneric(text);
+    if(!rows.length) return {};
+    const header = rows[0];
+    const map = {};
+    header.forEach((planName, c) => {
+      const name = (planName || '').trim();
+      if(!name) return;
+      const codes = [];
+      for(let r = 1; r < rows.length; r++){
+        const v = (rows[r][c] || '').trim();
+        if(v) codes.push(v.toUpperCase());
+      }
+      map[name] = codes;
+    });
+    redeemCodesCache = map;
+    return map;
+  } catch(e){
+    return {};
+  }
+}
+
+async function handleRedeem(){
+  const code = redeemInput.value.trim().toUpperCase();
+  if(!code){
+    redeemStatus.textContent = 'Enter a code';
+    redeemStatus.className = 'sync-status err';
+    return;
+  }
+
+  redeemSubmitBtn.disabled = true;
+  redeemStatus.textContent = 'Checking…';
+  redeemStatus.className = 'sync-status busy';
+
+  const redeemed = (await rememberStore.get(redeemedKeyFor(currentUser))) || [];
+  if(redeemed.includes(code)){
+    redeemStatus.textContent = 'Code already used on this device';
+    redeemStatus.className = 'sync-status err';
+    redeemSubmitBtn.disabled = false;
+    return;
+  }
+
+  const codeMap = await loadRedeemCodes();
+  let matchedPlan = null;
+  for(const planName of Object.keys(codeMap)){
+    if(codeMap[planName].includes(code)){ matchedPlan = planName; break; }
+  }
+
+  redeemSubmitBtn.disabled = false;
+
+  if(!matchedPlan){
+    redeemStatus.textContent = REDEEM_SHEET_URL ? 'Invalid code' : 'Redeem database not connected';
+    redeemStatus.className = 'sync-status err';
+    return;
+  }
+
+  const plan = planFor(matchedPlan);
+  const bal = await getBalance(currentUser);
+  bal.bindMak += plan.bindMak;
+  bal.retail += plan.retail;
+  await setBalance(currentUser, bal);
+  renderBalance(bal, currentUser);
+
+  redeemed.push(code);
+  await rememberStore.set(redeemedKeyFor(currentUser), redeemed);
+
+  redeemInput.value = '';
+  redeemStatus.textContent = `+${plan.bindMak} Bind/MAK, +${plan.retail} Retail added (${matchedPlan})`;
+  redeemStatus.className = 'sync-status ok';
+}
+
+redeemSubmitBtn.addEventListener('click', handleRedeem);
+redeemInput.addEventListener('keydown', e => { if(e.key === 'Enter') handleRedeem(); });
 
 (async function initAuth(){
   await loadUsers();
@@ -1116,6 +1360,10 @@ async function runExtraction(){
 
   if(!product){ return; }
 
+  const bucket = bucketForType(type);
+  const bucketLabel = bucket === 'retail' ? 'Retail' : 'Bind/MAK';
+  const bal = await getBalance(currentUser);
+
   runBtn.disabled = true;
   resultsBox.classList.remove('show');
   keyList.innerHTML = '';
@@ -1127,10 +1375,27 @@ async function runExtraction(){
   statusText.textContent = 'PROCESSING';
   setProgress(0, 'initializing');
 
+  if(bal[bucket] <= 0){
+    await addLine(`<span class="tag">[${stamp()}]</span> Opening session <span class="info">${reqId}</span>`, 120);
+    setProgress(20, 'checking quota');
+    await addLine(`<span class="tag">[${stamp()}]</span> <span class="warn">Daily ${bucketLabel} limit reached (0 remaining). Redeem a code or try again tomorrow.</span>`, 320);
+    setProgress(100, 'blocked');
+    statusPill.classList.remove('busy');
+    statusPill.classList.add('live');
+    statusText.textContent = 'READY';
+    runBtn.disabled = false;
+    lastExtracted = [];
+    renderResults([], product, type, false, true);
+    return;
+  }
+
+  const effectiveQty = Math.min(qty, bal[bucket]);
+
   const steps = [
     { html: `<span class="tag">[${stamp()}]</span> Opening session <span class="info">${reqId}</span>`, pct: 8, stage: 'session init', delay: 120 },
     { html: `<span class="tag">[${stamp()}]</span> Category: <span class="info">${category}</span> · Target: <span class="info">${product}</span>`, pct: 18, stage: 'resolving product', delay: 260 },
-    { html: `<span class="tag">[${stamp()}]</span> Key class: <span class="info">${type}</span> · qty: <span class="info">${qty}</span>`, pct: 28, stage: 'validating parameters', delay: 260 },
+    { html: `<span class="tag">[${stamp()}]</span> Key class: <span class="info">${type}</span> · qty: <span class="info">${qty}</span>`, pct: 26, stage: 'validating parameters', delay: 260 },
+    { html: `<span class="tag">[${stamp()}]</span> Daily balance: <span class="info">${bal[bucket]} ${bucketLabel}</span> remaining`, pct: 32, stage: 'checking quota', delay: 240 },
     { html: `<span class="tag">[${stamp()}]</span> Connecting to license pool...`, pct: 40, stage: 'connecting', delay: 320 },
     { html: `<span class="tag">[${stamp()}]</span> <span class="ok">Connection established</span>`, pct: 48, stage: 'connected', delay: 260 },
     { html: `<span class="tag">[${stamp()}]</span> Scanning inventory for matching entries...`, pct: 58, stage: 'scanning', delay: 340 },
@@ -1143,14 +1408,15 @@ async function runExtraction(){
 
   const matches = pool.filter(r => r.category === category && r.product === product && r.type === type);
   const available = matches.length;
-  const willGive = matches.slice(0, qty);
+  const willGive = matches.slice(0, effectiveQty);
   const shortfall = qty - willGive.length;
 
   await addLine(`<span class="tag">[${stamp()}]</span> Found <span class="${available ? 'ok' : 'warn'}">${available}</span> matching record(s)`, 340);
   setProgress(70, 'filtering');
 
-  if(shortfall > 0){
-    await addLine(`<span class="tag">[${stamp()}]</span> <span class="warn">Only ${available} of ${qty} requested available</span>`, 260);
+  if(effectiveQty < qty){
+    const reason = effectiveQty < available ? 'daily quota' : 'stock';
+    await addLine(`<span class="tag">[${stamp()}]</span> <span class="warn">Only ${willGive.length} of ${qty} requested available (${reason} limit)</span>`, 260);
   }
 
   await addLine(`<span class="tag">[${stamp()}]</span> Decrypting key block...`, 300);
@@ -1166,8 +1432,12 @@ async function runExtraction(){
   statusText.textContent = 'READY';
   runBtn.disabled = false;
 
+  if(willGive.length > 0){
+    await deductBalance(currentUser, bucket, willGive.length);
+  }
+
   lastExtracted = willGive;
-  renderResults(willGive, product, type, available < qty);
+  renderResults(willGive, product, type, available < qty || effectiveQty < qty);
 }
 
 function stamp(){
@@ -1175,7 +1445,7 @@ function stamp(){
   return d.toTimeString().slice(0,8) + '.' + String(d.getMilliseconds()).padStart(3,'0');
 }
 
-function renderResults(rows, product, type, short){
+function renderResults(rows, product, type, short, quotaBlocked){
   keyList.innerHTML = '';
   resultsLabel.textContent = short
     ? `Extraction Complete — partial (${rows.length} returned)`
@@ -1185,7 +1455,10 @@ function renderResults(rows, product, type, short){
     const div = document.createElement('div');
     div.className = 'key-row';
     div.style.animationDelay = '0ms';
-    div.innerHTML = `<span class="meta">No keys in database for "${product}" / "${type}". Add entries in the Key Database panel.</span>`;
+    const bucket = bucketForType(type);
+    const quotaMsg = `Daily ${bucket === 'retail' ? 'Retail' : 'Bind/MAK'} limit reached. Redeem a code above or try again tomorrow.`;
+    const noStockMsg = `No keys in database for "${product}" / "${type}". Add entries in the Key Database panel.`;
+    div.innerHTML = `<span class="meta">${quotaBlocked ? quotaMsg : noStockMsg}</span>`;
     keyList.appendChild(div);
     resultsBox.classList.add('show');
     return;
